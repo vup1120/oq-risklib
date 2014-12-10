@@ -1,6 +1,11 @@
+import os
 import unittest
 import cStringIO
-from openquake.commonlib.nrml import read, node_to_xml
+
+from openquake.commonlib.nrml import read, write, node_to_xml
+from openquake.commonlib import nrml_examples
+
+NRML_EXAMPLES = os.path.dirname(nrml_examples.__file__)
 
 
 class NrmlTestCase(unittest.TestCase):
@@ -68,3 +73,11 @@ xmlns:gml="http://www.opengis.net/gml"
     </exposureModel>
 </nrml>
 """)
+
+    def test_round_trip(self):
+        fname = os.path.join(NRML_EXAMPLES, 'gmf-event-based.xml')
+        node = read(fname)
+        out = cStringIO.StringIO()
+        write([node], out)
+        # fix the example file to use the scientific notation
+        # self.assertEqual(open(fname).read(), out.getvalue())

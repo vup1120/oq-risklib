@@ -451,24 +451,13 @@ class Exposure(Converter):
 ################################# gmf ##################################
 
 class GmfCollection(Converter):
-    """A converter for gmfSet/GmfCollection nodes"""
+    """A converter for GmfCollection nodes"""
 
     @classmethod
     def node_to_records(cls, node):
         """
         Convert the node into a sequence of Gmf records
         """
-        if node.tag == 'gmfSet':
-            yield records.GmfSet('0', '')
-            for gmf in node.getnodes('gmf'):
-                imt = gmf['IMT']
-                if imt == 'SA':
-                    imt += '(%s)' % gmf['saPeriod']
-                yield records.Gmf(1, imt, '')
-                for n in gmf:
-                    yield records.GmfData(
-                        '0', imt, '', n['lon'], n['lat'], n['gmv'])
-            return
         yield records.GmfCollection(
             node['sourceModelTreePath'],
             node['gsimTreePath'])

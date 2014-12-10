@@ -76,7 +76,7 @@ supplemented by a dictionary of validators.
 """
 
 import sys
-import collections
+from openquake.baselib import general
 from openquake.commonlib import valid
 from openquake.commonlib.node import node_to_xml, \
     Node, LiteralNode, node_from_elem, striptag, parse, iterparse
@@ -112,19 +112,7 @@ class NRMLFile(object):
         self._file.close()
 
 
-class Register(collections.OrderedDict):
-    """
-    An ordered dictionary tag -> callable, used to register functions
-    or classes.
-    """
-    def add(self, *tags):
-        def dec(obj):
-            for tag in tags:
-                self[tag] = obj
-            return obj
-        return dec
-
-nodefactory = Register()
+nodefactory = general.CallableDict()
 
 
 @nodefactory.add('sourceModel', 'simpleFaultRupture', 'complexFaultRupture',
@@ -239,15 +227,16 @@ valid_loss_types = valid.Choice('structural', 'nonstructural', 'contents',
                                 'business_interruption', 'occupants')
 
 
-@nodefactory.add('aggregateLossCurve', 'hazardCurves', 'hazardMap')
+@nodefactory.add('aggregateLossCurve', 'hazardCurves', 'hazardMap',
+                 'gmfCollection')
 class CurveNode(LiteralNode):
     validators = valid.parameters(
         investigationTime=valid.positivefloat,
         loss_type=valid_loss_types,
         unit=str,
         poEs=valid.probabilities,
-        gsimTreePath=lambda v: v.split('_'),
-        sourceModelTreePath=lambda v: v.split('_'),
+        gsimTreePath=str,
+        sourceModelTreePath=str,
         losses=valid.positivefloats,
         averageLoss=valid.positivefloat,
         stdDevLoss=valid.positivefloat,
@@ -257,7 +246,10 @@ class CurveNode(LiteralNode):
         IMT=str,
         saPeriod=valid.positivefloat,
         saDamping=valid.positivefloat,
-        node=valid.lon_lat_iml,
+        lon=valid.longitude,
+        lat=valid.latitude,
+        iml=valid.positivefloat,
+        gmv=valid.positivefloat,
         quantileValue=valid.positivefloat,
     )
 
@@ -291,6 +283,9 @@ class CollapseNode(LiteralNode):
 
 
 def damage_triple(value, ds, mean, stddev):
+    """
+    :returns: (damage_state, mean, stddev)
+    """
     return ds, valid.positivefloat(mean), valid.positivefloat(stddev)
 
 
@@ -307,8 +302,6 @@ class DamageNode(LiteralNode):
 # see https://bugs.launchpad.net/oq-engine/+bug/1381066
 nodefactory.add(
     'disaggMatrices',
-    'gmfCollection',
-    'gmfSet',
     'logicTree',
     'lossCurves',
     'lossFraction',

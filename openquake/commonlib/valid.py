@@ -264,13 +264,6 @@ def lon_lat(value):
     return longitude(lon), latitude(lat)
 
 
-def lon_lat_iml(value, lon, lat, iml):
-    """
-    Used to convert nodes of the form <node lon="LON" lat="LAT" iml="IML" />
-    """
-    return longitude(lon), latitude(lat), positivefloat(iml)
-
-
 def coordinates(value):
     """
     Convert a non-empty string into a list of lon-lat coordinates
