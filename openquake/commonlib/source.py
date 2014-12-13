@@ -33,9 +33,6 @@ from openquake.commonlib import parallel
 # this must stay here for the nrml_converters: don't remove it!
 from openquake.commonlib.obsolete import NrmlHazardlibConverter
 
-# the following is arbitrary, it is used to decide when to parallelize
-# the filtering (MS)
-LOTS_OF_SOURCES_SITES = 1E5  # arbitrary, set by Michele Simionato
 MAGNITUDE_FOR_RUPTURE_SPLITTING = 6.5  # given by Marco Pagani
 # NB: the parameter MAGNITUDE_FOR_RUPTURE_SPLITTING cannot go in a
 # configuration file, otherwise the tests will break by changing it;
@@ -785,16 +782,17 @@ def _filter_sources(sources, sitecol, maxdist):
     return srcs
 
 
-def filter_sources(sources, sitecol, maxdist):
+def filter_sources(sources, sitecol, maxdist, in_parallel=False):
     """
     Filter a list of hazardlib sources according to the maximum distance.
 
     :param sources: the original sources
     :param sitecol: a :class:`openquake.hazardlib.site.SiteCollection` instance
     :param maxdist: maximum distance
+    :param in_parallel: flag specifying if the filtering is done in parallel
     :returns: the filtered sources ordered by source_id
     """
-    if len(sources) * len(sitecol) > LOTS_OF_SOURCES_SITES:
+    if in_parallel:
         # filter in parallel on all available cores
         sources = parallel.apply_reduce(
             _filter_sources, (sources, sitecol, maxdist), operator.add, [])
