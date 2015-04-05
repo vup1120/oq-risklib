@@ -22,6 +22,7 @@ import gzip
 import zipfile
 import logging
 import tempfile
+import operator
 import collections
 import ConfigParser
 
@@ -353,6 +354,7 @@ def get_source_models(oqparam, source_model_lt, sitecol=None, in_memory=True):
         an iterator over :class:`openquake.commonlib.source.SourceModel`
         tuples
     """
+    trt_id = 0
     converter = sourceconverter.SourceConverter(
         oqparam.investigation_time,
         oqparam.rupture_mesh_spacing,
@@ -405,8 +407,24 @@ def get_source_models(oqparam, source_model_lt, sitecol=None, in_memory=True):
         else:
             gsim_lt = logictree.DummyGsimLogicTree()
         weight = rlz.weight / num_samples
+        for trt_model in trt_models:
+            trt_model.id = trt_id
+            for src in trt_model:
+                src.trt_model_id = trt_id
+            trt_id += 1
         yield source.SourceModel(
             sm, weight, smpath, trt_models, gsim_lt, i, num_samples)
+
+
+def filter_sources(sources, sitecol, maxdist):
+    """
+    """
+    srcs = collections.defaultdict(list)
+    for src in sources:
+        sites = src.filter_sites_by_distance_to_source(maxdist, sitecol)
+        if sites is not None:
+            srcs[src.trt_model_id].append(src)
+    return srcs
 
 
 def get_filtered_source_models(oqparam, source_model_lt, sitecol,
@@ -429,24 +447,27 @@ def get_filtered_source_models(oqparam, source_model_lt, sitecol,
     """
     for source_model in get_source_models(
             oqparam, source_model_lt, in_memory=in_memory):
-        for trt_model in list(source_model.trt_models):
-            num_original_sources = len(trt_model)
-            trt_model.sources = sourceconverter.filter_sources(
-                trt_model, sitecol, oqparam.maximum_distance)
-            if num_original_sources > 1:
-                logging.info(
-                    'Considering %d of %d sources for model %s%s, TRT=%s',
-                    len(trt_model), num_original_sources, source_model.name,
-                    source_model.path, trt_model.trt)
-            if not trt_model.sources:
+        trt_by_id = {}
+        all_sources = []
+        for trt_model in source_model.trt_models:
+            trt_by_id[trt_model.id] = trt_model
+            for src in trt_model:
+                all_sources.append(src)
+        filtered = parallel.apply_reduce(
+            filter_sources, (all_sources, sitecol, oqparam.maximum_distance),
+            key=operator.attrgetter('trt_model_id'))
+        for trt_model_id, sources in filtered.iteritems():
+            trt_by_id[trt_model_id].sources = sorted(
+                sources, key=operator.attrgetter('source_id'))
+            if not sources:
                 logging.warn(
                     'Could not find sources close to the sites in %s '
                     'sm_lt_path=%s, maximum_distance=%s km, TRT=%s',
                     source_model.name, source_model.path,
                     oqparam.maximum_distance, trt_model.trt)
-        if source_model.trt_models:
-            yield source_model
-            parallel.TaskManager.restart()  # hack to save memory
+            if source_model.trt_models:
+                yield source_model
+                parallel.TaskManager.restart()  # hack to save memory
 
 
 def get_composite_source_model(oqparam, sitecol=None, prefilter=False,
