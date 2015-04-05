@@ -453,9 +453,10 @@ def get_filtered_source_models(oqparam, source_model_lt, sitecol,
             trt_by_id[trt_model.id] = trt_model
             for src in trt_model:
                 all_sources.append(src)
+        ct = 32 if len(all_sources) > 10 and len(sitecol) > 10 else 0
         filtered = parallel.apply_reduce(
             filter_sources, (all_sources, sitecol, oqparam.maximum_distance),
-            key=operator.attrgetter('trt_model_id'))
+            key=operator.attrgetter('trt_model_id'), concurrent_tasks=ct)
         for trt_model_id, sources in filtered.iteritems():
             trt_by_id[trt_model_id].sources = sorted(
                 sources, key=operator.attrgetter('source_id'))
@@ -465,9 +466,9 @@ def get_filtered_source_models(oqparam, source_model_lt, sitecol,
                     'sm_lt_path=%s, maximum_distance=%s km, TRT=%s',
                     source_model.name, source_model.path,
                     oqparam.maximum_distance, trt_model.trt)
-            if source_model.trt_models:
-                yield source_model
-                parallel.TaskManager.restart()  # hack to save memory
+        if source_model.trt_models:
+            yield source_model
+            parallel.TaskManager.restart()  # hack to save memory
 
 
 def get_composite_source_model(oqparam, sitecol=None, prefilter=False,
