@@ -690,10 +690,7 @@ class ArrayDict(collections.Mapping):
         return new
 
     def __getitem__(self, key):
-        if isinstance(key, str):
-            return self.array[self.slicedic[key]]
-        else:
-            return self.array[key]
+        return self.array[self.slicedic.get(key, key)]
 
     def __setitem__(self, key, value):
         if isinstance(key, str):

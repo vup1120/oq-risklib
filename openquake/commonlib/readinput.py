@@ -416,15 +416,20 @@ def get_source_models(oqparam, source_model_lt, sitecol=None, in_memory=True):
             sm, weight, smpath, trt_models, gsim_lt, i, num_samples)
 
 
-def filter_sources(sources, sitecol, maxdist):
+def filter_sources(sources, sitecol, maxdist, monitor):
     """
+    :param sources: a list of sources with the same trt_model_id
+    :param sitecol: a SiteCollection instance
+    :param maxdist: the maximum_distance parameter
+    :param monitor: a monitor object
+    :returns: a dictionary of sources with key trt_model_id
     """
-    srcs = collections.defaultdict(list)
+    srcs = []
     for src in sources:
         sites = src.filter_sites_by_distance_to_source(maxdist, sitecol)
         if sites is not None:
-            srcs[src.trt_model_id].append(src)
-    return srcs
+            srcs.append(src)
+    return {srcs[0].trt_model_id: srcs}
 
 
 def get_filtered_source_models(oqparam, source_model_lt, sitecol,
@@ -445,27 +450,33 @@ def get_filtered_source_models(oqparam, source_model_lt, sitecol,
         an iterator over :class:`openquake.commonlib.source.SourceModel`
         tuples skipping the empty models
     """
-    for source_model in get_source_models(
-            oqparam, source_model_lt, in_memory=in_memory):
-        trt_by_id = {}
-        all_sources = []
+    trt_by_id = {}
+    sm_by_id = {}
+    all_sources = []
+    source_models = list(get_source_models(
+        oqparam, source_model_lt, in_memory=in_memory))
+    for source_model in source_models:
         for trt_model in source_model.trt_models:
+            sm_by_id[trt_model.id] = source_model
             trt_by_id[trt_model.id] = trt_model
-            for src in trt_model:
-                all_sources.append(src)
-        ct = 32 if len(all_sources) > 10 and len(sitecol) > 10 else 0
-        filtered = parallel.apply_reduce(
-            filter_sources, (all_sources, sitecol, oqparam.maximum_distance),
-            key=operator.attrgetter('trt_model_id'), concurrent_tasks=ct)
-        for trt_model_id, sources in filtered.iteritems():
-            trt_by_id[trt_model_id].sources = sorted(
-                sources, key=operator.attrgetter('source_id'))
-            if not sources:
-                logging.warn(
-                    'Could not find sources close to the sites in %s '
-                    'sm_lt_path=%s, maximum_distance=%s km, TRT=%s',
-                    source_model.name, source_model.path,
-                    oqparam.maximum_distance, trt_model.trt)
+            all_sources.extend(trt_model)
+    ct = 32 if len(all_sources) > 10 and len(sitecol) > 10 else 0
+    filter_mon = parallel.PerformanceMonitor('filtering sources')
+    filtered = parallel.apply_reduce(
+        filter_sources, (all_sources, sitecol, oqparam.maximum_distance,
+                         filter_mon),
+        key=operator.attrgetter('trt_model_id'), concurrent_tasks=ct)
+    for trt_model_id, sources in filtered.iteritems():
+        source_model = sm_by_id[trt_model_id]
+        trt_by_id[trt_model_id].sources = sorted(
+            sources, key=operator.attrgetter('source_id'))
+        if not sources:
+            logging.warn(
+                'Could not find sources close to the sites in %s '
+                'sm_lt_path=%s, maximum_distance=%s km, TRT=%s',
+                source_model.name, source_model.path,
+                oqparam.maximum_distance, trt_model.trt)
+    for source_model in source_models:
         if source_model.trt_models:
             yield source_model
             parallel.TaskManager.restart()  # hack to save memory
@@ -496,15 +507,18 @@ def get_composite_source_model(oqparam, sitecol=None, prefilter=False,
     smodels = []
     trt_id = 0
     get_sm = get_filtered_source_models if prefilter else get_source_models
+    mon = parallel.PerformanceMonitor('splitting sources')
     for source_model in get_sm(oqparam, source_model_lt, sitecol, in_memory):
         for trt_model in source_model.trt_models:
             trt_model.id = trt_id
             trt_id += 1
             if prefilter:
-                trt_model.split_sources_and_count_ruptures(
-                    oqparam.area_source_discretization)
+                with mon:
+                    trt_model.split_sources_and_count_ruptures(
+                        oqparam.area_source_discretization)
                 logging.info('Processed %s', trt_model)
         smodels.append(source_model)
+    mon.flush()
     csm = source.CompositeSourceModel(source_model_lt, smodels)
     return csm
 
