@@ -416,6 +416,7 @@ def get_source_models(oqparam, source_model_lt, sitecol=None, in_memory=True):
             sm, weight, smpath, trt_models, gsim_lt, i, num_samples)
 
 
+@parallel.litetask
 def filter_sources(sources, sitecol, maxdist, monitor):
     """
     :param sources: a list of sources with the same trt_model_id
@@ -429,7 +430,7 @@ def filter_sources(sources, sitecol, maxdist, monitor):
         sites = src.filter_sites_by_distance_to_source(maxdist, sitecol)
         if sites is not None:
             srcs.append(src)
-    return {srcs[0].trt_model_id: srcs}
+    return {srcs[0].trt_model_id: srcs} if srcs else {}
 
 
 def get_filtered_source_models(oqparam, source_model_lt, sitecol,
@@ -462,7 +463,7 @@ def get_filtered_source_models(oqparam, source_model_lt, sitecol,
             all_sources.extend(trt_model)
     ct = 32 if len(all_sources) > 10 and len(sitecol) > 10 else 0
     filter_mon = parallel.PerformanceMonitor('filtering sources')
-    filtered = parallel.apply_reduce(
+    filtered = parallel.TaskManager.apply_reduce(
         filter_sources, (all_sources, sitecol, oqparam.maximum_distance,
                          filter_mon),
         key=operator.attrgetter('trt_model_id'), concurrent_tasks=ct)
