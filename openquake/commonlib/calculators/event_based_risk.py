@@ -30,7 +30,7 @@ from openquake.risklib import riskinput, scientific
 
 
 @parallel.litetask
-def event_loss(riskinputs, riskmodel, rlzs_assoc, monitor):
+def event_based_risk(riskinputs, riskmodel, rlzs_assoc, monitor):
     """
     :param riskinputs:
         a list of :class:`openquake.risklib.riskinput.RiskInput` objects
@@ -69,7 +69,7 @@ class EventBasedRiskCalculator(base.RiskCalculator):
     Event based PSHA calculator generating the ruptures only
     """
     hazard_calculator = 'event_based_rupture'
-    core_func = event_loss
+    core_func = event_based_risk
     result_kind = 'event_loss_by_rlz_tag'
 
     def riskinput_key(self, ri):
