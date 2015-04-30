@@ -38,8 +38,8 @@ from openquake.commonlib import nrml, valid, logictree, InvalidFile, parallel
 from openquake.commonlib.oqvalidation import vulnerability_files
 from openquake.commonlib.riskmodels import \
     get_fragility_functions, get_vfs
-from openquake.baselib.general import groupby, AccumDict
-from openquake.baselib.general import writetmp
+from openquake.baselib.general import (
+    groupby, AccumDict, writetmp, split_in_blocks)
 
 from openquake.commonlib import source, sourceconverter
 
@@ -447,10 +447,10 @@ def get_source_models(oqparam, source_model_lt, sitecol=None, in_memory=True):
             sm, weight, smpath, trt_models, gsim_lt, i, num_samples)
 
 
-def filter_sources(sources, sitecol, maxdist):
+def filter_sources(sitecol, sources, maxdist):
     """
-    :param sources: a list of sources with the same trt_model_id
     :param sitecol: a SiteCollection instance
+    :param sources: a list of sources with the same trt_model_id
     :param maxdist: the maximum_distance parameter
     :returns: a dictionary of sources with key trt_model_id
     """
@@ -459,7 +459,7 @@ def filter_sources(sources, sitecol, maxdist):
         sites = src.filter_sites_by_distance_to_source(maxdist, sitecol)
         if sites is not None:
             srcs.append(src)
-    return {srcs[0].trt_model_id: srcs} if srcs else {}
+    return srcs
 
 
 def get_filtered_source_models(oqparam, source_model_lt, sitecol,
@@ -481,30 +481,33 @@ def get_filtered_source_models(oqparam, source_model_lt, sitecol,
         tuples skipping the empty models
     """
     with parallel.PerformanceMonitor('prefiltering sources'):
-        trt_by_id = {}
-        sm_by_id = {}
-        all_sources = []
+        maxdist = oqparam.maximum_distance
+        tiles = map(site.SiteCollection, split_in_blocks(
+            sitecol, oqparam.concurrent_tasks or 1))
         source_models = list(get_source_models(
             oqparam, source_model_lt, in_memory=in_memory))
+        all_args = []
         for source_model in source_models:
             for trt_model in source_model.trt_models:
-                sm_by_id[trt_model.id] = source_model
-                trt_by_id[trt_model.id] = trt_model
-                all_sources.extend(trt_model)
-        ct = 32 if len(all_sources) > 10 and len(sitecol) > 10 else 0
-        filtered = parallel.TaskManager.apply_reduce(
-            filter_sources, (all_sources, sitecol, oqparam.maximum_distance),
-            key=operator.attrgetter('trt_model_id'), concurrent_tasks=ct)
-        for trt_model_id, sources in filtered.iteritems():
-            source_model = sm_by_id[trt_model_id]
-            trt_by_id[trt_model_id].sources = sorted(
-                sources, key=operator.attrgetter('source_id'))
-            if not sources:
-                logging.warn(
-                    'Could not find sources close to the sites in %s '
-                    'sm_lt_path=%s, maximum_distance=%s km, TRT=%s',
-                    source_model.name, source_model.path,
-                    oqparam.maximum_distance, trt_model.trt)
+                for tile in tiles:
+                    all_args.append((tile, list(trt_model), maxdist))
+        if len(sitecol) >= 1000:
+            sources = parallel.TaskManager.starmap(
+                filter_sources, all_args).reduce(acc=[])
+        else:
+            sources = sum((args[1] for args in all_args), [])
+        sources_by_trt = groupby(sources, operator.attrgetter('trt_model_id'))
+        for source_model in source_models:
+            for trt_model in source_model.trt_models:
+                sources = sources_by_trt.get(trt_model.id, [])
+                trt_model.sources = sorted(
+                    sources, key=operator.attrgetter('source_id'))
+                if not sources:
+                    logging.warn(
+                        'Could not find sources close to the sites in %s '
+                        'sm_lt_path=%s, maximum_distance=%s km, TRT=%s',
+                        source_model.name, source_model.path,
+                        maxdist, trt_model.trt)
     for source_model in source_models:
         if source_model.trt_models:
             yield source_model

@@ -605,12 +605,3 @@ def parse_ses_ruptures(fname):
     each one containing ruptures with a tag and a seed.
     """
     raise NotImplementedError('parse_ses_ruptures')
-
-@parallel.litetask
-        # filter in parallel on all available cores
-        sources = parallel.TaskManager.apply_reduce(
-            _filter_sources, (sources, sitecol, maxdist, mon),
-            operator.add, [])
-    else:
-        # few sources and sites, filter sequentially on a single core
-        sources = _filter_sources.task_func(sources, sitecol, maxdist, mon)
