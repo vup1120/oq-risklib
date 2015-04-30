@@ -218,6 +218,51 @@ def split_in_blocks(sequence, hint, weight=lambda item: 1,
     return block_splitter(items, math.ceil(total_weight / hint), weight, key)
 
 
+def split_in_blocks_2(long_sequence, short_sequence, hint,
+                      weight=lambda item: 1,
+                      key=lambda item: 'Unspecified'):
+    """
+    Split two sequences in blocks. The first sequence has to be longer
+    than the second. Yield pairs (block_from_seq_1, block_from_seq_2).
+
+    :param long_sequence: a finite sequence of items of size N
+    :param short_sequence: a finite sequence of items of size n <=N
+    :param hint: an integer suggesting the number of blocks to generate
+    :param weight: a function returning the weigth of a given item
+    :param key: a function returning the key of a given item
+
+    A few examples will explain how it works:
+
+    >>> for b1, b2 in split_in_blocks_2(range(10), 'ABC', 3):
+    ...      print b1, b2
+    [0, 1, 2, 3] ['A']
+    [4, 5, 6, 7] ['B']
+    [8, 9] ['C']
+
+    >>> for b1, b2 in split_in_blocks_2(range(10), 'ABC', 2):
+    ...      print b1, b2
+    [0, 1, 2, 3, 4] ['A', 'B']
+    [5, 6, 7, 8, 9] ['C']
+
+    If the second sequence is so short that it cannot be splitted in enough
+    blocks (i.e. n < hint), then its blocks will be repeated to produce a
+    number of blocks equal to the number of blocks of the first sequence:
+
+    >>> for b1, b2 in split_in_blocks_2(range(10), 'ABC', 4):
+    ...      print b1, b2
+    [0, 1, 2] ['A']
+    [3, 4, 5] ['B']
+    [6, 7, 8] ['C']
+    [9] ['A']
+    """
+    N, n = len(long_sequence), len(short_sequence)
+    assert N >= n
+    long_blocks = split_in_blocks(long_sequence, hint, weight, key)
+    short_blocks = split_in_blocks(short_sequence, hint)
+    for long_, short in zip(long_blocks, itertools.cycle(short_blocks)):
+        yield list(long_), list(short)
+
+
 def assert_close_seq(seq1, seq2, rtol, atol):
     """
     Compare two sequences of the same length.
@@ -244,10 +289,10 @@ def assert_close(a, b, rtol=1e-07, atol=0):
     :param rtol: relative tolerance
     :param atol: absolute tolerance
     """
-    if a == b:  # shortcut
-        return
-    if isinstance(a, numpy.ndarray):  # another shortcut
+    if isinstance(a, numpy.ndarray) and a.shape:  # shortcut
         numpy.testing.assert_allclose(a, b, rtol, atol)
+        return
+    if a == b:  # another shortcut
         return
     if hasattr(a, '__slots__'):  # record-like objects
         assert_close_seq(a.__slots__, b.__slots__, rtol, atol)
@@ -524,6 +569,45 @@ class AccumDict(dict):
                                for key, value in self.iteritems()})
 
 
+def array_to_dict(array):
+    """
+    Convert a composite array into an array-valued AccumDict
+    """
+    return AccumDict({k: array[k] for k in array.dtype.fields})
+
+
+def dict_to_array(dic):
+    """
+    Convert an array-valued dictionary into a one-dimensionale array using
+    a composite dtype.
+
+    >>> dic = {'a': [1, 2], 'b': [3, 4, 5]}
+    >>> arr = dict_to_array(dic)
+    >>> len(arr)
+    1
+    >>> list(arr.dtype.fields)
+    ['a', 'b']
+    >>> arr['a']
+    array([[ 1.,  2.]])
+    >>> array_to_dict(arr)
+    {'a': array([[ 1.,  2.]]), 'b': array([[ 3.,  4.,  5.]])}
+
+    >>> array_to_dict(dict_to_array({'a': 1, 'b': 2}))
+    {'a': array([ 1.]), 'b': array([ 2.])}
+    """
+    descr = []
+    for k in sorted(dic):
+        val = dic[k]
+        try:
+            pair = (k, float, len(val))
+        except:  # val has no len
+            pair = (k, float)
+        descr.append(pair)
+    dtype = numpy.dtype(descr)
+    tuples = [tuple(dic[k] for k in sorted(dic))]
+    return numpy.array(tuples, dtype)
+
+
 class ArrayDict(collections.Mapping):
     """
     A class wrapping an array-valued dictionary. ArrayDict instances
@@ -721,3 +805,17 @@ def groupby(objects, key, reducegroup=list):
     kgroups = itertools.groupby(sorted(objects, key=key), key)
     return collections.OrderedDict((k, reducegroup(group))
                                    for k, group in kgroups)
+
+
+def humansize(nbytes, suffixes=('B', 'KB', 'MB', 'GB', 'TB', 'PB')):
+    """
+    Return file size in a human-friendly format
+    """
+    if nbytes == 0:
+        return '0 B'
+    i = 0
+    while nbytes >= 1024 and i < len(suffixes) - 1:
+        nbytes /= 1024.
+        i += 1
+    f = ('%.2f' % nbytes).rstrip('0').rstrip('.')
+    return '%s %s' % (f, suffixes[i])

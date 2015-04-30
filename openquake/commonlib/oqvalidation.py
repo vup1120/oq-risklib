@@ -19,13 +19,10 @@
 import os
 import logging
 import collections
-from openquake.hazardlib.gsim import get_available_gsims
-from openquake.commonlib import valid
+from openquake.commonlib import valid, parallel
 from openquake.commonlib.riskmodels import (
     get_fragility_functions, get_imtls_from_vulnerabilities,
     vulnerability_files, fragility_files)
-
-GSIMS = get_available_gsims()
 
 GROUND_MOTION_CORRELATION_MODELS = ['JB2009']
 
@@ -42,14 +39,14 @@ CALCULATORS = HAZARD_CALCULATORS + RISK_CALCULATORS
 
 
 class OqParam(valid.ParamSet):
-    exports = 'csv'  # default value, normally overridden
-
     area_source_discretization = valid.Param(
         valid.NoneOr(valid.positivefloat), None)
     asset_correlation = valid.Param(valid.NoneOr(valid.FloatRange(0, 1)), 0)
     asset_life_expectancy = valid.Param(valid.positivefloat)
     base_path = valid.Param(valid.utf8)
     calculation_mode = valid.Param(valid.Choice(*CALCULATORS), '')
+    concurrent_tasks = valid.Param(
+        valid.positiveint, parallel.executor.num_tasks_hint)
     coordinate_bin_width = valid.Param(valid.positivefloat)
     conditional_loss_poes = valid.Param(valid.probabilities, [])
     continuous_fragility_discretization = valid.Param(valid.positiveint, 20)
@@ -59,11 +56,12 @@ class OqParam(valid.ParamSet):
     epsilon_sampling = valid.Param(valid.positiveint, 1000)
     export_dir = valid.Param(valid.utf8, None)
     export_multi_curves = valid.Param(valid.boolean, False)
+    exports = valid.Param(valid.Choice('csv', 'xml', 'geojson'), 'csv')
     ground_motion_correlation_model = valid.Param(
         valid.NoneOr(valid.Choice(*GROUND_MOTION_CORRELATION_MODELS)), None)
     ground_motion_correlation_params = valid.Param(valid.dictionary)
     ground_motion_fields = valid.Param(valid.boolean, False)
-    gsim = valid.Param(valid.Choice(*GSIMS))
+    gsim = valid.Param(str)  # it is validated in pre_execute anyway
     hazard_calculation_id = valid.Param(valid.NoneOr(valid.positiveint))
     hazard_curves_from_gmfs = valid.Param(valid.boolean, False)
     hazard_output_id = valid.Param(valid.NoneOr(valid.positiveint))
@@ -105,7 +103,7 @@ class OqParam(valid.ParamSet):
     region = valid.Param(valid.coordinates, None)
     region_constraint = valid.Param(valid.wkt_polygon, None)
     region_grid_spacing = valid.Param(valid.positivefloat, None)
-    # risk_imtls = valid.Param(valid.intensity_measure_types_and_levels, {})
+    risk_imtls = valid.Param(valid.intensity_measure_types_and_levels, {})
     risk_investigation_time = valid.Param(valid.positivefloat, None)
     rupture_mesh_spacing = valid.Param(valid.positivefloat, None)
     complex_fault_mesh_spacing = valid.Param(
@@ -113,7 +111,7 @@ class OqParam(valid.ParamSet):
     ses_per_logic_tree_path = valid.Param(valid.positiveint, 1)
     sites = valid.Param(valid.NoneOr(valid.coordinates), None)
     sites_disagg = valid.Param(valid.NoneOr(valid.coordinates), [])
-    specific_assets = valid.Param(str.split, [])
+    specific_assets = valid.Param(valid.namelist, [])
     statistics = valid.Param(valid.boolean, True)
     taxonomies_from_model = valid.Param(valid.boolean, False)
     time_event = valid.Param(str, None)
@@ -142,6 +140,15 @@ class OqParam(valid.ParamSet):
                                for fset in ffs.itervalues()}
 
     @property
+    def tses(self):
+        """
+        Return the total time as investigation_time * ses_per_logic_tree_path *
+        (number_of_logic_tree_samples or 1)
+        """
+        return self.investigation_time * self.ses_per_logic_tree_path * (
+            self.number_of_logic_tree_samples or 1)
+
+    @property
     def imtls(self):
         """
         Returns an OrderedDict with the risk intensity measure types and
@@ -149,6 +156,12 @@ class OqParam(valid.ParamSet):
         """
         imtls = getattr(self, 'hazard_imtls', None) or self.risk_imtls
         return collections.OrderedDict(sorted(imtls.items()))
+
+    def no_imls(self):
+        """
+        Return True if there are no intensity measure levels
+        """
+        return all(ls is None for ls in self.imtls.itervalues())
 
     def is_valid_truncation_level_disaggregation(self):
         """
@@ -211,7 +224,7 @@ class OqParam(valid.ParamSet):
         return (self.calculation_mode not in HAZARD_CALCULATORS
                 or getattr(self, 'maximum_distance', None))
 
-    def is_valid_imtls(self):
+    def is_valid_intensity_measure_types(self):
         """
         If the IMTs and levels are extracted from the risk models,
         they must not be set directly. Moreover, if
@@ -219,13 +232,22 @@ class OqParam(valid.ParamSet):
         `intensity_measure_types` must not be set.
         """
         if fragility_files(self.inputs) or vulnerability_files(self.inputs):
-            return (
-                self.intensity_measure_types is None
-                and self.intensity_measure_types_and_levels is None
-                )
-        elif self.intensity_measure_types_and_levels:
-            return self.intensity_measure_types is None
+            return (self.intensity_measure_types is None
+                    and self.intensity_measure_types_and_levels is None)
+        elif not hasattr(self, 'hazard_imtls') and not hasattr(
+                self, 'risk_imtls'):
+            return False
         return True
+
+    def is_valid_intensity_measure_levels(self):
+        """
+        In order to compute hazard curves, `intensity_measure_types_and_levels`
+        must be set or extracted from the risk models.
+        """
+        invalid = self.no_imls() and (
+            self.hazard_curves_from_gmfs or self.calculation_mode in
+            ('classical', 'classical_tiling', 'disaggregation'))
+        return not invalid
 
     def is_valid_sites_disagg(self):
         """

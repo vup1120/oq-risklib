@@ -44,14 +44,14 @@ def classical_risk(riskinputs, riskmodel, rlzs_assoc, monitor):
         result = collections.defaultdict(general.AccumDict)
         for out_by_rlz in riskmodel.gen_outputs(
                 riskinputs, rlzs_assoc, monitor):
-            for rlz, out in out_by_rlz.iteritems():
+            for out in out_by_rlz:
                 values = workflows.get_values(out.loss_type, out.assets)
                 for i, asset in enumerate(out.assets):
                     avalue = values[i]
-                    result[rlz.ordinal, 'avg_loss'] += {
+                    result[out.hid, 'avg_loss'] += {
                         asset.id: out.average_losses[i] * avalue}
                     if out.average_insured_losses is not None:
-                        result[rlz.ordinal, 'ins_loss'] += {
+                        result[out.hid, 'ins_loss'] += {
                             asset.id: out.average_insured_losses[i] * avalue}
     return result
 
@@ -81,13 +81,12 @@ class ClassicalRiskCalculator(base.RiskCalculator):
         num_assets = sum(len(assets) for assets in assets_by_site)
         num_sites = len(sitecol)
         logging.info('Associated %d assets to %d sites', num_assets, num_sites)
-
-        haz_out, _hcalc = base.get_hazard(self, exports=self.oqparam.exports)
+        hcalc = base.get_pre_calculator(self, exports=self.oqparam.exports)
 
         logging.info('Preparing the risk input')
-        self.rlzs_assoc = haz_out['rlzs_assoc']
+        self.rlzs_assoc = hcalc.datastore['rlzs_assoc']
         self.riskinputs = self.build_riskinputs(
-            haz_out['curves_by_trt_gsim'], eps_dict={})
+            hcalc.datastore['curves_by_trt_gsim'], eps_dict={})
 
     def post_execute(self, result):
         """

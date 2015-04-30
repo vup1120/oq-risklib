@@ -17,6 +17,8 @@ import cStringIO
 from contextlib import contextmanager
 from xml.sax.saxutils import escape, quoteattr
 
+import numpy
+
 
 @contextmanager
 def floatformat(fmt_string):
@@ -27,18 +29,19 @@ def floatformat(fmt_string):
     :param fmt_string: the format to use; for instance '%13.9E'
     """
     fmt_defaults = scientificformat.__defaults__
-    scientificformat.__defaults__ = (fmt_string, fmt_defaults[1])
+    scientificformat.__defaults__ = (fmt_string,) + fmt_defaults[1:]
     try:
         yield
     finally:
         scientificformat.__defaults__ = fmt_defaults
 
 
-def scientificformat(value, fmt='%13.9E', sep=' '):
+def scientificformat(value, fmt='%13.9E', sep=' ', sep2=':'):
     """
     :param value: the value to convert into a string
     :param fmt: the formatting string to use for float values
-    :param sep: separator to use for array-like values
+    :param sep: separator to use for vector-like values
+    :param sep2: second separator to use for matrix-like values
 
     Convert a float or an array into a string by using the scientific notation
     and a fixed precision (by default 10 decimal digits). For instance:
@@ -50,17 +53,17 @@ def scientificformat(value, fmt='%13.9E', sep=' '):
     >>> scientificformat([0.01, 0.02], '%10.6E')
     '1.000000E-02 2.000000E-02'
     >>> scientificformat([[0.1, 0.2], [0.3, 0.4]], '%4.1E')
-    '1.0E-01 2.0E-01 3.0E-01 4.0E-01'
+    '1.0E-01:2.0E-01 3.0E-01:4.0E-01'
     """
     if isinstance(value, basestring):
         return value
     elif isinstance(value, (int, long)):
         return str(value)
     elif hasattr(value, '__len__'):
-        return sep.join((scientificformat(f, fmt, sep) for f in value))
+        return sep.join((scientificformat(f, fmt, sep2) for f in value))
     elif isinstance(value, float):
         return fmt % value
-    raise ValueError(value)
+    return str(value)
 
 
 class StreamingXMLWriter(object):
@@ -177,4 +180,100 @@ def save_csv(dest, header_rows, sep=',', fmt='%12.8E', mode='wb'):
     with open(dest, mode) as f:
         for row in header_rows:
             f.write(sep.join(scientificformat(col, fmt) for col in row) + '\n')
+    return dest
+
+
+# recursive function used internally by build_header
+def _build_header(dtype, root):
+    header = []
+    if dtype.fields is None:
+        if not root:
+            return []
+        return [root + (str(dtype), dtype.shape)]
+    for field in dtype.fields:
+        dt = dtype.fields[field][0]
+        if dt.subdtype is None:  # nested
+            header.extend(_build_header(dt, root + (field,)))
+        else:
+            numpytype = str(dt.subdtype[0])
+            header.append(root + (field, numpytype, dt.shape))
+    return header
+
+
+def build_header(dtype):
+    """
+    Convert a numpy nested dtype into a list of strings suitable as header
+    of csv file.
+
+    >>> imt_dt = numpy.dtype([('PGA', float, 3), ('PGV', float, 4)])
+    >>> build_header(imt_dt)
+    ['PGV:float64:4', 'PGA:float64:3']
+    >>> gmf_dt = numpy.dtype([('A', imt_dt), ('B', imt_dt),
+    ...                       ('idx', numpy.uint32)])
+    >>> build_header(gmf_dt)
+    ['A-PGV:float64:4', 'A-PGA:float64:3', 'B-PGV:float64:4', 'B-PGA:float64:3', 'idx:uint32:']
+    """
+    header = _build_header(dtype, ())
+    h = []
+    for col in header:
+        name = '-'.join(col[:-2])
+        numpytype = col[-2]
+        shape = col[-1]
+        h.append(':'.join([name, numpytype, ':'.join(map(str, shape))]))
+    return h
+
+
+def extract_from(data, fields):
+    """
+    Extract data from numpy arrays with nested records.
+
+    >>> imt_dt = numpy.dtype([('PGA', float, 3), ('PGV', float, 4)])
+    >>> a = numpy.array([([1, 2, 3], [4, 5, 6, 7])], imt_dt)
+    >>> extract_from(a, ['PGA'])
+    array([[ 1.,  2.,  3.]])
+
+    >>> gmf_dt = numpy.dtype([('A', imt_dt), ('B', imt_dt),
+    ...                       ('idx', numpy.uint32)])
+    >>> b = numpy.array([(([1, 2, 3], [4, 5, 6, 7]),
+    ...                  ([1, 2, 4], [3, 5, 6, 7]), 8)], gmf_dt)
+    >>> extract_from(b, ['idx'])
+    array([8], dtype=uint32)
+    >>> extract_from(b, ['B', 'PGV'])
+    array([[ 3.,  5.,  6.,  7.]])
+    """
+    for f in fields:
+        data = data[f]
+    return data
+
+
+def write_csv(dest, data, sep=',', fmt='%12.8E'):
+    """
+    :param dest: destination filename
+    :param data: array to save
+    :param sep: separator to use (default comma)
+    :param fmt: formatting string (default '%12.8E')
+    """
+    try:
+        # see if data is a composite numpy array
+        data.dtype.fields
+    except AttributeError:
+        # not a composite array
+        header = []
+    else:
+        header = build_header(data.dtype)
+    with open(dest, 'wb') as f:
+        if header:
+            f.write(sep.join(header) + '\n')
+            all_fields = [col.split(':', 1)[0].split('-')
+                          for col in header]
+            for record in data:
+                row = []
+                for fields in all_fields:
+                    row.append(extract_from(record, fields))
+                f.write(sep.join(scientificformat(col, fmt)
+                                 for col in row) + '\n')
+        else:
+            for row in data:
+                f.write(sep.join(scientificformat(col, fmt)
+                                 for col in row) + '\n')
     return dest

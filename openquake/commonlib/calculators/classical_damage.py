@@ -20,7 +20,7 @@ import os
 import logging
 
 from openquake.baselib.general import AccumDict
-from openquake.commonlib import readinput, parallel
+from openquake.commonlib import readinput, parallel, logictree
 from openquake.commonlib.calculators import base
 from openquake.commonlib.export import export
 from openquake.commonlib.risk_writers import DmgState
@@ -50,8 +50,8 @@ def classical_damage(riskinputs, riskmodel, rlzs_assoc, monitor):
         result = {i: AccumDict() for i in range(len(rlzs_assoc))}
         for out_by_rlz in riskmodel.gen_outputs(
                 riskinputs, rlzs_assoc, monitor):
-            for rlz, out in out_by_rlz.iteritems():
-                result[rlz] += dict(zip(out.assets, out.damages))
+            for out in out_by_rlz:
+                result[out.hid] += dict(zip(out.assets, out.damages))
     return result
 
 
@@ -65,7 +65,7 @@ class ClassicalDamageCalculator(base.RiskCalculator):
 
     def pre_execute(self):
         """
-        Compute the GMFs and build the riskinputs.
+        Read the curves and build the riskinputs.
         """
         super(ClassicalDamageCalculator, self).pre_execute()
 
@@ -81,7 +81,10 @@ class ClassicalDamageCalculator(base.RiskCalculator):
         logging.info('Preparing the risk input')
         self.riskinputs = self.build_riskinputs(
             {(0, 'FromCsv'): hcurves_by_imt}, eps_dict={})
-        self.rlzs_assoc = riskinput.FakeRlzsAssoc(num_rlzs=1)  # TODO: extend
+        fake_rlz = logictree.Realization(
+            value=('FromCsv',), weight=1, lt_path=('',),
+            ordinal=0, lt_uid=('*',))
+        self.rlzs_assoc = logictree.RlzsAssoc([fake_rlz])
 
     def post_execute(self, result):
         """

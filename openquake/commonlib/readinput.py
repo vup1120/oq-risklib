@@ -260,10 +260,41 @@ def get_site_collection(oqparam, mesh=None, site_ids=None,
 
 def get_gsims(oqparam):
     """
-    Return a list of GSIM instances from the gsim name in the configuration
-    file (defined for scenario computations).
+    Return an ordered list of GSIM instances from the gsim name in the
+    configuration file or from the gsim logic tree file.
+
+    :param oqparam:
+        an :class:`openquake.commonlib.oqvalidation.OqParam` instance
     """
-    return map(valid.gsim, oqparam.gsim.split())
+    gsims = map(str, get_rlzs_assoc(oqparam).realizations)
+    return map(valid.gsim, gsims)
+
+
+def get_rlzs_assoc(oqparam):
+    """
+    Extract the GSIM realizations from the gsim_logic_tree file, if present,
+    or build a single realization from the gsim attribute. It is only defined
+    for the scenario calculators.
+
+    :param oqparam:
+        an :class:`openquake.commonlib.oqvalidation.OqParam` instance
+    """
+    if 'gsim_logic_tree' in oqparam.inputs:
+        gsim_lt = get_gsim_lt(oqparam, [])
+        if len(gsim_lt.values) != 1:
+            gsim_file = os.path.join(
+                oqparam.base_path, oqparam.inputs['gsim_logic_tree'])
+            raise InvalidFile(
+                'The gsim logic tree file % must contain a single tectonic '
+                'region type, found %s instead ' % gsim_file,
+                list(gsim_lt.values))
+        rlzs = sorted(get_gsim_lt(oqparam, []))
+    else:
+        rlzs = [
+            logictree.Realization(
+                value=(oqparam.gsim,), weight=1, lt_path=('',),
+                ordinal=0, lt_uid=('*',))]
+    return logictree.RlzsAssoc(rlzs)
 
 
 def get_correl_model(oqparam):
@@ -416,13 +447,11 @@ def get_source_models(oqparam, source_model_lt, sitecol=None, in_memory=True):
             sm, weight, smpath, trt_models, gsim_lt, i, num_samples)
 
 
-@parallel.litetask
-def filter_sources(sources, sitecol, maxdist, monitor):
+def filter_sources(sources, sitecol, maxdist):
     """
     :param sources: a list of sources with the same trt_model_id
     :param sitecol: a SiteCollection instance
     :param maxdist: the maximum_distance parameter
-    :param monitor: a monitor object
     :returns: a dictionary of sources with key trt_model_id
     """
     srcs = []
@@ -451,32 +480,31 @@ def get_filtered_source_models(oqparam, source_model_lt, sitecol,
         an iterator over :class:`openquake.commonlib.source.SourceModel`
         tuples skipping the empty models
     """
-    trt_by_id = {}
-    sm_by_id = {}
-    all_sources = []
-    source_models = list(get_source_models(
-        oqparam, source_model_lt, in_memory=in_memory))
-    for source_model in source_models:
-        for trt_model in source_model.trt_models:
-            sm_by_id[trt_model.id] = source_model
-            trt_by_id[trt_model.id] = trt_model
-            all_sources.extend(trt_model)
-    ct = 32 if len(all_sources) > 10 and len(sitecol) > 10 else 0
-    filter_mon = parallel.PerformanceMonitor('filtering sources')
-    filtered = parallel.TaskManager.apply_reduce(
-        filter_sources, (all_sources, sitecol, oqparam.maximum_distance,
-                         filter_mon),
-        key=operator.attrgetter('trt_model_id'), concurrent_tasks=ct)
-    for trt_model_id, sources in filtered.iteritems():
-        source_model = sm_by_id[trt_model_id]
-        trt_by_id[trt_model_id].sources = sorted(
-            sources, key=operator.attrgetter('source_id'))
-        if not sources:
-            logging.warn(
-                'Could not find sources close to the sites in %s '
-                'sm_lt_path=%s, maximum_distance=%s km, TRT=%s',
-                source_model.name, source_model.path,
-                oqparam.maximum_distance, trt_model.trt)
+    with parallel.PerformanceMonitor('prefiltering sources'):
+        trt_by_id = {}
+        sm_by_id = {}
+        all_sources = []
+        source_models = list(get_source_models(
+            oqparam, source_model_lt, in_memory=in_memory))
+        for source_model in source_models:
+            for trt_model in source_model.trt_models:
+                sm_by_id[trt_model.id] = source_model
+                trt_by_id[trt_model.id] = trt_model
+                all_sources.extend(trt_model)
+        ct = 32 if len(all_sources) > 10 and len(sitecol) > 10 else 0
+        filtered = parallel.TaskManager.apply_reduce(
+            filter_sources, (all_sources, sitecol, oqparam.maximum_distance),
+            key=operator.attrgetter('trt_model_id'), concurrent_tasks=ct)
+        for trt_model_id, sources in filtered.iteritems():
+            source_model = sm_by_id[trt_model_id]
+            trt_by_id[trt_model_id].sources = sorted(
+                sources, key=operator.attrgetter('source_id'))
+            if not sources:
+                logging.warn(
+                    'Could not find sources close to the sites in %s '
+                    'sm_lt_path=%s, maximum_distance=%s km, TRT=%s',
+                    source_model.name, source_model.path,
+                    oqparam.maximum_distance, trt_model.trt)
     for source_model in source_models:
         if source_model.trt_models:
             yield source_model
@@ -517,7 +545,10 @@ def get_composite_source_model(oqparam, sitecol=None, prefilter=False,
                 with mon:
                     trt_model.split_sources_and_count_ruptures(
                         oqparam.area_source_discretization)
-                logging.info('Processed %s', trt_model)
+            else:  # just count ruptures and set weights
+                for src in trt_model:
+                    src.weight = trt_model.update_num_ruptures(src)
+            logging.info('Processed %s', trt_model)
         smodels.append(source_model)
     mon.flush()
     csm = source.CompositeSourceModel(source_model_lt, smodels)
@@ -896,13 +927,14 @@ def get_sitecol_gmfs(oqparam):
         `tag indices [gmv1 ... gmvN] * num_imts`
     """
     imts = oqparam.imtls.keys()
+    imt_dt = numpy.dtype([(imt, float) for imt in imts])
     num_gmfs = oqparam.number_of_ground_motion_fields
-    gmf_by_imt = {imt: [] for imt in imts}
     sitecol = get_site_collection(oqparam)  # extract it from inputs['sites']
+    gmf_by_imt = numpy.zeros((num_gmfs, len(sitecol)), imt_dt)
     tags = []
     fname = oqparam.inputs['gmfs']
     with open(fname) as csvfile:
-        for line in csvfile:
+        for lineno, line in enumerate(csvfile, 1):
             row = line.split(',')
             try:
                 indices = map(valid.positiveint, row[1].split())
@@ -921,15 +953,14 @@ def get_sitecol_gmfs(oqparam):
                     raise InvalidFile(
                         'The column #%d in %s is expected to contain positive '
                         'floats, got %s instead' % (i + 3, fname, row[i + 2]))
-                gmf_by_imt[imts[i]].append(r_sites.expand(array, 0))
+                gmf_by_imt[imts[i]][lineno - 1, :] = r_sites.expand(array, 0)
             tags.append(row[0])
-    data = gmf_by_imt[imts[0]]
-    if len(data) != num_gmfs:
+    if lineno < num_gmfs:
         raise InvalidFile('%s contains %d rows, expected %d' % (
-            fname, len(data), num_gmfs))
+            fname, lineno, num_gmfs))
     if tags != sorted(tags):
         raise InvalidFile('The tags in %s are not ordered: %s' % (fname, tags))
-    return sitecol, {imt: numpy.array(gmf_by_imt[imt]).T for imt in imts}
+    return sitecol, gmf_by_imt.T
 
 
 def get_mesh_hcurves(oqparam):
