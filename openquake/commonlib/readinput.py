@@ -502,7 +502,7 @@ def get_filtered_source_models(oqparam, source_model_lt, sitecol,
                 filter_sources, all_args).reduce(operator.or_, set())
         else:
             sm = itertools.starmap(filter_sources, all_args)
-            source_ids = reduce(sm, operator.or_, set())
+            source_ids = reduce(operator.or_, sm, set())
         sources = [source_dict[src_id] for src_id in sorted(source_ids)]
         logging.info('Extracted %d source(s) from %d',
                      len(sources), len(source_dict))
