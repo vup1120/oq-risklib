@@ -71,6 +71,7 @@ def get_skeleton(sm):
 
 SourceModel = collections.namedtuple(
     'SourceModel', 'name weight path trt_models gsim_lt ordinal samples')
+SourceModel.uid = property(lambda self: '_'.join(self.path))
 
 
 class TrtModel(collections.Sequence):

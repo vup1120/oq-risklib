@@ -448,19 +448,32 @@ def get_source_models(oqparam, source_model_lt, sitecol=None, in_memory=True):
             sm, weight, smpath, trt_models, gsim_lt, i, num_samples)
 
 
-def filter_sources(sitecol, sources, maxdist):
+def _filter_sources(sitecol, sources, maxdist):
+    mask = numpy.zeros(len(sources), bool)
+    for i, src in enumerate(sources):
+        sites = src.filter_sites_by_distance_to_source(maxdist, sitecol)
+        mask[i] = sites is not None
+    return mask
+
+
+def filter_sources(tiles, sitecol, sources, maxdist):
     """
     :param sitecol: a SiteCollection instance
     :param sources: a list of sources
     :param maxdist: the maximum_distance parameter
-    :returns: a set of ids of the filtered sources
+    :returns: mask for the filtered sources
     """
-    srcs = set()
-    for src in sources:
-        sites = src.filter_sites_by_distance_to_source(maxdist, sitecol)
-        if sites is not None:
-            srcs.add(src.source_id)
-    return srcs
+    sources = numpy.array(sources)
+    if len(sitecol) < 1000:
+        mask = _filter_sources(sitecol, sources, maxdist)
+        return lambda: sources[mask]
+
+    all_args = []
+    for tile in tiles:
+        all_args.append((tile, sources, maxdist))
+    sm = parallel.TaskManager.starmap(_filter_sources, all_args)
+    zeros = numpy.zeros(len(sources), bool)
+    return lambda: sources[sm.reduce(numpy.add, zeros)]
 
 
 def get_filtered_source_models(oqparam, source_model_lt, sitecol,
@@ -487,38 +500,28 @@ def get_filtered_source_models(oqparam, source_model_lt, sitecol,
             sitecol, oqparam.concurrent_tasks or 1))
         source_models = list(get_source_models(
             oqparam, source_model_lt, in_memory=in_memory))
-        all_args = []
-        source_dict = {}
+        trt_sources = {}
         for source_model in source_models:
             for trt_model in source_model.trt_models:
-                srcs = list(trt_model)
-                for src in srcs:
-                    source_dict[src.source_id] = src
-                for tile in tiles:
-                    all_args.append((tile, srcs, maxdist))
-        if len(sitecol) >= 1000:
-            # enable the tiled filtering only for many sites
-            source_ids = parallel.TaskManager.starmap(
-                filter_sources, all_args).reduce(operator.or_, set())
-        else:
-            sm = itertools.starmap(filter_sources, all_args)
-            source_ids = reduce(operator.or_, sm, set())
-        sources = [source_dict[src_id] for src_id in source_ids]
-        logging.info('Extracted %d source(s) from %d',
-                     len(sources), len(source_dict))
-        del source_dict, all_args
-        sources_by_trt = groupby(sources, operator.attrgetter('trt_model_id'))
+                trt_sources[trt_model.id] = filter_sources(
+                    tiles, sitecol, trt_model, maxdist)
+        tot_sources = 0
+        num_sources = 0
         for source_model in source_models:
             for trt_model in source_model.trt_models:
-                sources = sources_by_trt.get(trt_model.id, [])
+                tot_sources += len(trt_model)
+                srcs = trt_sources[trt_model.id]()
+                num_sources += len(srcs)
                 trt_model.sources = sorted(
-                    sources, key=operator.attrgetter('source_id'))
-                if not sources:
+                    srcs, key=operator.attrgetter('source_id'))
+                if not trt_model.sources:
                     logging.warn(
                         'Could not find sources close to the sites in %s '
                         'sm_lt_path=%s, maximum_distance=%s km, TRT=%s',
                         source_model.name, source_model.path,
                         maxdist, trt_model.trt)
+        logging.info('Extracted %d source(s) from %d',
+                     num_sources, tot_sources)
     for source_model in source_models:
         if source_model.trt_models:
             yield source_model
