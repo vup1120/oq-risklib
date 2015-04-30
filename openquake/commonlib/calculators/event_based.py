@@ -267,6 +267,7 @@ class EventBasedRuptureCalculator(base.HazardCalculator):
     """
     core_func = compute_ruptures
     result_kind = 'ruptures_by_trt'
+    prefilter = False
 
     def pre_execute(self):
         """
