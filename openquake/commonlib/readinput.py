@@ -23,6 +23,7 @@ import zipfile
 import logging
 import tempfile
 import operator
+import itertools
 import collections
 import ConfigParser
 
@@ -450,9 +451,9 @@ def get_source_models(oqparam, source_model_lt, sitecol=None, in_memory=True):
 def filter_sources(sitecol, sources, maxdist):
     """
     :param sitecol: a SiteCollection instance
-    :param sources: a list of sources with the same trt_model_id
+    :param sources: a list of sources
     :param maxdist: the maximum_distance parameter
-    :returns: a dictionary of sources with key trt_model_id
+    :returns: a list of filtered sources
     """
     srcs = []
     for src in sources:
@@ -489,13 +490,16 @@ def get_filtered_source_models(oqparam, source_model_lt, sitecol,
         all_args = []
         for source_model in source_models:
             for trt_model in source_model.trt_models:
+                srcs = list(trt_model)
                 for tile in tiles:
-                    all_args.append((tile, list(trt_model), maxdist))
+                    all_args.append((tile, srcs, maxdist))
         if len(sitecol) >= 1000:
+            # enable the tiled filtering only for many sites
             sources = parallel.TaskManager.starmap(
                 filter_sources, all_args).reduce(acc=[])
         else:
-            sources = sum((args[1] for args in all_args), [])
+            sources = sum(itertools.starmap(filter_sources, all_args), [])
+        del all_args
         sources_by_trt = groupby(sources, operator.attrgetter('trt_model_id'))
         for source_model in source_models:
             for trt_model in source_model.trt_models:
