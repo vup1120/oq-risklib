@@ -453,13 +453,13 @@ def filter_sources(sitecol, sources, maxdist):
     :param sitecol: a SiteCollection instance
     :param sources: a list of sources
     :param maxdist: the maximum_distance parameter
-    :returns: a list of filtered sources
+    :returns: a set of ids of the filtered sources
     """
-    srcs = []
+    srcs = set()
     for src in sources:
         sites = src.filter_sites_by_distance_to_source(maxdist, sitecol)
         if sites is not None:
-            srcs.append(src)
+            srcs.add(src.source_id)
     return srcs
 
 
@@ -488,18 +488,25 @@ def get_filtered_source_models(oqparam, source_model_lt, sitecol,
         source_models = list(get_source_models(
             oqparam, source_model_lt, in_memory=in_memory))
         all_args = []
+        source_dict = {}
         for source_model in source_models:
             for trt_model in source_model.trt_models:
                 srcs = list(trt_model)
+                for src in srcs:
+                    source_dict[src.source_id] = src
                 for tile in tiles:
                     all_args.append((tile, srcs, maxdist))
         if len(sitecol) >= 1000:
             # enable the tiled filtering only for many sites
-            sources = parallel.TaskManager.starmap(
-                filter_sources, all_args).reduce(acc=[])
+            source_ids = parallel.TaskManager.starmap(
+                filter_sources, all_args).reduce(operator.or_, set())
         else:
-            sources = sum(itertools.starmap(filter_sources, all_args), [])
-        del all_args
+            sm = itertools.starmap(filter_sources, all_args)
+            source_ids = reduce(sm, operator.or_, set())
+        sources = [source_dict[src_id] for src_id in sorted(source_ids)]
+        logging.info('Extracted %d source(s) from %d',
+                     len(sources), len(source_dict))
+        del source_dict, all_args
         sources_by_trt = groupby(sources, operator.attrgetter('trt_model_id'))
         for source_model in source_models:
             for trt_model in source_model.trt_models:
