@@ -21,7 +21,7 @@ from itertools import izip
 from openquake.hazardlib import geo, mfd, pmf, source
 from openquake.hazardlib.tom import PoissonTOM
 from openquake.commonlib.node import context, striptag
-from openquake.commonlib import valid
+from openquake.commonlib import valid, parallel
 
 # this must stay here for the nrml_converters: don't remove it!
 from openquake.commonlib.obsolete import NrmlHazardlibConverter
@@ -160,20 +160,49 @@ def split_source(src, area_source_discretization):
     :param float area_source_discretization:
         area source discretization
     """
+    sources = []
     if isinstance(src, source.AreaSource):
         # area_source_discretization cannot be None if there are area sources
         assert area_source_discretization, (
             "Please set area_source_discretization in the job.ini file")
         for s in area_to_point_sources(src, area_source_discretization):
-            yield s
+            sources.append(s)
     elif isinstance(
             src, (source.SimpleFaultSource, source.ComplexFaultSource)):
         for s in split_fault_source(src):
-            yield s
+            sources.append(s)
     else:
         # characteristic and nonparametric sources are not split
         # since they are small anyway
-        yield src
+        sources.append(src)
+    return sources
+
+
+def split_sources_parallel(sources, area_source_discretization):
+    """
+    Split area sources and fault sources in parallel, leaving the
+    other sources unchanged.
+
+    :param sources: a list of sources of all typologies
+    :param area_source_discretization: area source discretization
+    :returns: a list of sources ordered by source_id
+    """
+    simple_sources = []
+    complex_sources = []
+    for src in sources:
+        if isinstance(src, (source.AreaSource, source.SimpleFaultSource,
+                            source.ComplexFaultSource)):
+            complex_sources.append(src)
+        else:
+            simple_sources.append(src)
+    if len(complex_sources) > 2:  # parallelize only if there are many sources
+        split_sources = parallel.TaskManager.starmap(
+            split_source, [(src, area_source_discretization)
+                           for src in complex_sources]).reduce(acc=[])
+    else:
+        split_sources = complex_sources
+    return sorted(simple_sources + split_sources,
+                  key=operator.attrgetter('source_id'))
 
 
 def split_coords_2d(seq):

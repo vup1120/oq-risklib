@@ -172,22 +172,6 @@ class TrtModel(collections.Sequence):
                   else num_ruptures)
         return weight
 
-    def split_sources_and_count_ruptures(self, area_source_discretization):
-        """
-        Split the current .sources and replace them with new ones.
-        Also, update the total .num_ruptures and the .weigth of each
-        source. Finally, make sure the sources are ordered.
-
-        :param area_source_discretization: parameter from the job.ini
-        """
-        sources = []
-        for src in self:
-            for ss in sourceconverter.split_source(
-                    src, area_source_discretization):
-                ss.weight = self.update_num_ruptures(ss)
-                sources.append(ss)
-        self.sources = sorted(sources, key=operator.attrgetter('source_id'))
-
     def __repr__(self):
         return '<%s #%d %s, %d source(s), %d rupture(s)>' % (
             self.__class__.__name__, self.id, self.trt,
