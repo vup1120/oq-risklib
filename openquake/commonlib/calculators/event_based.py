@@ -413,7 +413,7 @@ class EventBasedCalculator(ClassicalCalculator):
         (if any). If there were pre-existing files, they will be erased.
         """
         ClassicalCalculator.pre_execute(self)
-        rupture_by_tag = sum(self.precalc.sescollection, AccumDict())
+        rupture_by_tag = sum(self.datastore['sescollection'], AccumDict())
         self.sesruptures = [rupture_by_tag[tag]
                             for tag in sorted(rupture_by_tag)]
 
@@ -473,13 +473,12 @@ class EventBasedCalculator(ClassicalCalculator):
             if not os.path.exists(export_dir):
                 os.makedirs(export_dir)
             oq.export_dir = export_dir
-            csm = self.precalc.composite_source_model
             # use a different datastore
             self.cl = ClassicalCalculator(oq, self.monitor)
             # copy the relevant attributes
-            self.cl.composite_source_model = csm
+            self.cl.composite_source_model = self.csm
             self.cl.sitecol = self.sitecol
-            self.cl.rlzs_assoc = csm.get_rlzs_assoc()
+            self.cl.rlzs_assoc = self.csm.get_rlzs_assoc()
             result = self.cl.run(pre_execute=False)
             for imt in self.mean_curves.dtype.fields:
                 rdiff, index = max_rel_diff_index(

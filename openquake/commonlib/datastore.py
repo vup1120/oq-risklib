@@ -97,7 +97,7 @@ class DataStore(collections.MutableMapping):
     items, the DataStore will return a generator. The items will be ordered
     lexicographically according to their name.
     """
-    def __init__(self, calc_id=None, datadir=DATADIR):
+    def __init__(self, calc_id=None, datadir=DATADIR, parent=None):
         if not os.path.exists(datadir):
             os.makedirs(datadir)
         if calc_id is None:  # use a new datastore
@@ -106,6 +106,7 @@ class DataStore(collections.MutableMapping):
             self.calc_id = get_last_calc_id(datadir)
         else:  # use the given datastore
             self.calc_id = calc_id
+        self.parent = parent  # parent datastore (if any)
         self.calc_dir = os.path.join(datadir, 'calc_%s' % self.calc_id)
         if not os.path.exists(self.calc_dir):
             os.mkdir(self.calc_dir)
@@ -177,8 +178,17 @@ class DataStore(collections.MutableMapping):
 
     def __getitem__(self, key):
         if key.startswith('/'):
-            return self.hdf5[key]
-        with open(self.path(key)) as df:
+            try:
+                return self.hdf5[key]
+            except KeyError:
+                if self.parent:
+                    return self.parent.hdf5[key]
+                else:
+                    raise
+        path = self.path(key)
+        if not os.path.exists(path) and self.parent:
+            path = self.parent.path(key)
+        with open(path) as df:
             value = cPickle.load(df)
             if callable(value):
                 return value(self)
@@ -188,7 +198,11 @@ class DataStore(collections.MutableMapping):
         if key.startswith('/'):
             if not isinstance(value, numpy.ndarray):
                 raise ValueError('not an array: %r' % value)
-            self.hdf5[key] = value
+            try:
+                self.hdf5[key] = value
+            except RuntimeError as exc:
+                raise RuntimeError('Could not save %s: %s in %s' %
+                                   (key, exc, self.hdf5path))
         else:
             with open(self.path(key), 'w') as df:
                 return cPickle.dump(value, df, cPickle.HIGHEST_PROTOCOL)
@@ -250,25 +264,14 @@ def persistent_attribute(key):
         # Try to get the value from the privatekey attribute (i.e. from
         # the cache of the datastore); if not possible, get the value
         # from the datastore and set the cache; if not possible, get the
-        # value from the precalculator and set the cache. If the value cannot
+        # value from the parent and set the cache. If the value cannot
         # be retrieved, raise an AttributeError.
         try:
-            try:
-                return getattr(self.datastore, privatekey)
-            except AttributeError:
-                value = self.datastore[key]
-                setattr(self.datastore, privatekey, value)
-                return value
-        except (KeyError, IOError):
-            precalc = getattr(self, 'precalc', None)
-            if precalc is not None:
-                try:
-                    return getattr(self.precalc, key)
-                except AttributeError:
-                    value = self.datastore[key]
-                    setattr(self.datastore, privatekey, value)
-            else:
-                raise AttributeError(key)
+            return getattr(self.datastore, privatekey)
+        except AttributeError:
+            value = self.datastore[key]
+            setattr(self.datastore, privatekey, value)
+            return value
 
     def setter(self, value):
         # Update the datastore and the private key
