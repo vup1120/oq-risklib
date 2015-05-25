@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<nrml xmlns:gml="http://www.opengis.net/gml" xmlns="http://openquake.org/xmlns/nrml/0.4">
+<nrml xmlns:gml="http://www.opengis.net/gml" xmlns="http://openquake.org/xmlns/nrml/0.5">
   <sourceModel name="b Fault stitched D2.1 Char model for California">
     <characteristicFaultSource id="0_0" name="Mount Diablo Thrust combined w/merge2.f" tectonicRegion="Active Shallow Crust">
       <incrementalMFD binWidth="0.048" minMag="6.46">

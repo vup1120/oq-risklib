@@ -32,7 +32,7 @@ validated as soon as opened.
 For instance an exposure file like the following::
 
   <?xml version='1.0' encoding='utf-8'?>
-  <nrml xmlns="http://openquake.org/xmlns/nrml/0.4"
+  <nrml xmlns="http://openquake.org/xmlns/nrml/0.5"
         xmlns:gml="http://www.opengis.net/gml">
     <exposureModel
         id="my_exposure_model_for_population"
@@ -81,7 +81,7 @@ from openquake.commonlib import valid
 from openquake.commonlib.node import node_to_xml, \
     Node, LiteralNode, node_from_elem, striptag, parse, iterparse
 
-NAMESPACE = 'http://openquake.org/xmlns/nrml/0.4'
+NAMESPACE = 'http://openquake.org/xmlns/nrml/0.5'
 GML_NAMESPACE = 'http://www.opengis.net/gml'
 SERIALIZE_NS_MAP = {None: NAMESPACE, 'gml': GML_NAMESPACE}
 PARSE_NS_MAP = {'nrml': NAMESPACE, 'gml': GML_NAMESPACE}

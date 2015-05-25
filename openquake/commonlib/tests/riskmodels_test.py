@@ -29,7 +29,7 @@ class ParseVulnerabilityModelTestCase(unittest.TestCase):
         # vulnerability functions
         vuln_content = StringIO.StringIO("""\
 <?xml version='1.0' encoding='utf-8'?>
-<nrml xmlns="http://openquake.org/xmlns/nrml/0.4"
+<nrml xmlns="http://openquake.org/xmlns/nrml/0.5"
       xmlns:gml="http://www.opengis.net/gml">
     <vulnerabilityModel>
         <discreteVulnerabilitySet vulnerabilitySetID="PAGER"
@@ -70,7 +70,7 @@ class ParseVulnerabilityModelTestCase(unittest.TestCase):
         # with the same ID and different IMTs.
         vuln_content = StringIO.StringIO("""\
 <?xml version='1.0' encoding='utf-8'?>
-<nrml xmlns="http://openquake.org/xmlns/nrml/0.4"
+<nrml xmlns="http://openquake.org/xmlns/nrml/0.5"
       xmlns:gml="http://www.opengis.net/gml">
     <vulnerabilityModel>
         <discreteVulnerabilitySet vulnerabilitySetID="PAGER"
@@ -108,7 +108,7 @@ class ParseVulnerabilityModelTestCase(unittest.TestCase):
         # is > 0, a ValueError should be raised
         vuln_content = StringIO.StringIO("""\
 <?xml version='1.0' encoding='utf-8'?>
-<nrml xmlns="http://openquake.org/xmlns/nrml/0.4"
+<nrml xmlns="http://openquake.org/xmlns/nrml/0.5"
       xmlns:gml="http://www.opengis.net/gml">
     <vulnerabilityModel>
         <discreteVulnerabilitySet vulnerabilitySetID="PAGER"
@@ -135,7 +135,7 @@ class ParseVulnerabilityModelTestCase(unittest.TestCase):
         vuln_content = StringIO.StringIO("""\
 <?xml version='1.0' encoding='utf-8'?>
 <nrml xmlns:gml="http://www.opengis.net/gml"
-      xmlns="http://openquake.org/xmlns/nrml/0.4">
+      xmlns="http://openquake.org/xmlns/nrml/0.5">
      <fragilityModel format="continuous">
         <description>Fragility for test</description>
         <limitStates>LS1 LS2</limitStates>
@@ -160,7 +160,7 @@ class ParseVulnerabilityModelTestCase(unittest.TestCase):
         vuln_content = StringIO.StringIO("""\
 <?xml version='1.0' encoding='utf-8'?>
 <nrml xmlns:gml="http://www.opengis.net/gml"
-      xmlns="http://openquake.org/xmlns/nrml/0.4">
+      xmlns="http://openquake.org/xmlns/nrml/0.5">
      <fragilityModel format="continuous">
         <description>Fragility for test</description>
         <limitStates>LS1 LS2</limitStates>
