@@ -25,11 +25,12 @@ import collections
 
 import numpy
 
-from openquake.commonlib.node import read_nodes, context
+from openquake.commonlib.node import read_nodes, context, LiteralNode
 from openquake.commonlib import InvalidFile
 from openquake.risklib import scientific
 from openquake.baselib.general import AccumDict
 from openquake.commonlib.nrml import nodefactory
+from openquake.commonlib.sourcewriter import obj_to_node
 
 VULNERABILITY_KEY = re.compile('(structural|nonstructural|contents|'
                                'business_interruption|occupants)_([\w_]+)')
@@ -105,6 +106,20 @@ def get_vfs(inputs, retrofitted=False):
 
 
 ############################ vulnerability ##################################
+
+
+@obj_to_node.add('VulnerabilityFunction')
+def build_vf_node(vf):
+    """
+    Convert a VulnerabilityFunction object into a LiteralNode suitable
+    for XML conversion.
+    """
+    nodes = [LiteralNode('imls', {'imt': vf.imt}, vf.imls),
+             LiteralNode('meanLRs', {}, vf.mean_loss_ratios),
+             LiteralNode('covLRs', {}, vf.covs)]
+    return LiteralNode(
+        'vulnerabilityFunction',
+        {'id': vf.id, 'dist': vf.distribution_name}, nodes=nodes)
 
 
 def filter_vset(elem):

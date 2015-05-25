@@ -78,7 +78,7 @@ supplemented by a dictionary of validators.
 import sys
 import logging
 from openquake.baselib.general import CallableDict
-from openquake.commonlib import valid
+from openquake.commonlib import valid, writers
 from openquake.commonlib.node import node_to_xml, \
     Node, LiteralNode, node_from_elem, striptag, parse, iterparse
 
@@ -359,7 +359,7 @@ def read_lazy(source, lazytags):
     return nodes
 
 
-def write(nodes, output=sys.stdout):
+def write(nodes, output=sys.stdout, fmt='%s'):
     """
     Convert nodes into a NRML file. output must be a file
     object open in write mode. If you want to perform a
@@ -370,7 +370,8 @@ def write(nodes, output=sys.stdout):
     :params output: a file-like object in write or read-write mode
     """
     root = Node('nrml', nodes=nodes)
-    node_to_xml(root, output, {NAMESPACE: '', GML_NAMESPACE: 'gml:'})
+    with writers.floatformat(fmt):
+        node_to_xml(root, output, {NAMESPACE: '', GML_NAMESPACE: 'gml:'})
     if hasattr(output, 'mode') and '+' in output.mode:  # read-write mode
         output.seek(0)
         read(output)  # validate the written file
