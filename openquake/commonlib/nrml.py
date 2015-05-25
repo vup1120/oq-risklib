@@ -76,6 +76,7 @@ supplemented by a dictionary of validators.
 """
 
 import sys
+import logging
 from openquake.baselib.general import CallableDict
 from openquake.commonlib import valid
 from openquake.commonlib.node import node_to_xml, \
@@ -312,6 +313,11 @@ def read(source):
     """
     nrml = parse(source).getroot()
     assert striptag(nrml.tag) == 'nrml', nrml.tag
+    xmlns = nrml.tag.split('}')[0][1:]
+    if xmlns != NAMESPACE:
+        logging.warn('%s is at an outdated version: %s\n'
+                     'You can run $ oq-lite upgrade_nrml <directory>' % (
+                         source, xmlns))
     subnodes = []
     for elem in nrml:
         nodecls = nodefactory[striptag(elem.tag)]
