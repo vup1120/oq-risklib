@@ -20,6 +20,7 @@
 Reading risk models for risk calculators
 """
 import re
+import os.path
 import logging
 import collections
 
@@ -134,7 +135,12 @@ def get_vulnerability_functions(fname):
     imts = set()
     taxonomies = set()
     vf_dict = {}  # imt, taxonomy -> vulnerability function
-    vmodel = nrml.read(fname)[0]
+    node = nrml.read(fname)
+    xmlns = node.tag.split('}')[0][1:]
+    if xmlns != nrml.NAMESPACE:
+        raise InvalidFile('outdated: you can run $ oq-lite upgrade_nrml %s' %
+                          os.path.dirname(fname))
+    vmodel = node[0]
     for vfun in vmodel:
         imt = vfun.imls['imt']
         imts.add(imt)

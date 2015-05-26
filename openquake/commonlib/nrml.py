@@ -324,9 +324,7 @@ def read(source, chatty=True):
     assert striptag(nrml.tag) == 'nrml', nrml.tag
     xmlns = nrml.tag.split('}')[0][1:]
     if xmlns != NAMESPACE and chatty:
-        logging.warn('%s is at an outdated version: %s\n'
-                     'You can run $ oq-lite upgrade_nrml <directory>' % (
-                         source, xmlns))
+        logging.warn('%s is at an outdated version: %s' % (source, xmlns))
     subnodes = []
     for elem in nrml:
         nodecls = nodefactory[striptag(elem.tag)]
