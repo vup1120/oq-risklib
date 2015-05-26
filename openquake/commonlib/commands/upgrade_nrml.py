@@ -77,19 +77,14 @@ def get_vulnerability_functions_04(fname):
                 vf_dict[imt_str, taxonomy] = scientific.VulnerabilityFunction(
                     taxonomy, imt_str, imls, loss_ratios, coefficients,
                     vfun['probabilisticDistribution'])
-    for cat in categories:
-        if len(categories[cat]) > 1:
-            raise ValueError('It is not possible to upgrade %s: the '
-                             'vulnerability model contains incompatible %s=%s'
-                             % (fname, cat, categories[cat]))
-    categories['id'] = categories['vulnerabilitySetID']
+    categories['id'] = '_'.join(sorted(categories['vulnerabilitySetID']))
     del categories['vulnerabilitySetID']
     return vf_dict, categories
 
 
 def upgrade_file(path):
     """Upgrade to the latest NRML version"""
-    node0 = nrml.read(path)[0]
+    node0 = nrml.read(path, chatty=False)[0]
     shutil.copy(path, path + '.bak')  # make a backup of the original file
     if striptag(node0.tag) == 'vulnerabilityModel':
         vf_dict, cat_dict = get_vulnerability_functions_04(path)
@@ -124,7 +119,10 @@ def upgrade_nrml(directory, dry_run):
                 elif xmlns.startswith('{http://openquake.org/xmlns/nrml/0.4'):
                     if not dry_run:
                         print 'Upgrading', path
-                        upgrade_file(path)
+                        try:
+                            upgrade_file(path)
+                        except Exception as exc:
+                            print exc
                     else:
                         print 'Not upgrading', path
                 ip._file.close()

@@ -11,25 +11,79 @@ xmlns:gml="http://www.opengis.net/gml"
             <taxonomy>
                 RC
             </taxonomy>
-            <damage ds="no_damage" mean="2.0826958E+02" stddev="3.0739673E+02"/>
-            <damage ds="LS1" mean="5.3367447E+02" stddev="1.7719091E+02"/>
-            <damage ds="LS2" mean="2.5805595E+02" stddev="2.5157607E+02"/>
+            <damage
+            ds="no_damage"
+            mean="2.0826958E+02"
+            stddev="3.0739673E+02"
+            >
+                no_damage 208.26958 307.39673
+            </damage>
+            <damage
+            ds="LS1"
+            mean="5.3367447E+02"
+            stddev="1.7719091E+02"
+            >
+                LS1 533.67447 177.19091
+            </damage>
+            <damage
+            ds="LS2"
+            mean="2.5805595E+02"
+            stddev="2.5157607E+02"
+            >
+                LS2 258.05595 251.57607
+            </damage>
         </DDNode>
         <DDNode>
             <taxonomy>
                 RM
             </taxonomy>
-            <damage ds="no_damage" mean="2.6659251E+03" stddev="3.8540885E+02"/>
-            <damage ds="LS1" mean="3.2092497E+02" stddev="3.6327497E+02"/>
-            <damage ds="LS2" mean="1.3149887E+01" stddev="2.3862005E+01"/>
+            <damage
+            ds="no_damage"
+            mean="2.6659251E+03"
+            stddev="3.8540885E+02"
+            >
+                no_damage 2665.9251 385.40885
+            </damage>
+            <damage
+            ds="LS1"
+            mean="3.2092497E+02"
+            stddev="3.6327497E+02"
+            >
+                LS1 320.92497 363.27497
+            </damage>
+            <damage
+            ds="LS2"
+            mean="1.3149887E+01"
+            stddev="2.3862005E+01"
+            >
+                LS2 13.149887 23.862005
+            </damage>
         </DDNode>
         <DDNode>
             <taxonomy>
                 W
             </taxonomy>
-            <damage ds="no_damage" mean="6.3870251E+02" stddev="7.5799460E+02"/>
-            <damage ds="LS1" mean="6.7041660E+02" stddev="5.3936353E+02"/>
-            <damage ds="LS2" mean="6.9088089E+02" stddev="8.8318278E+02"/>
+            <damage
+            ds="no_damage"
+            mean="6.3870251E+02"
+            stddev="7.5799460E+02"
+            >
+                no_damage 638.70251 757.9946
+            </damage>
+            <damage
+            ds="LS1"
+            mean="6.7041660E+02"
+            stddev="5.3936353E+02"
+            >
+                LS1 670.4166 539.36353
+            </damage>
+            <damage
+            ds="LS2"
+            mean="6.9088089E+02"
+            stddev="8.8318278E+02"
+            >
+                LS2 690.88089 883.18278
+            </damage>
         </DDNode>
     </dmgDistPerTaxonomy>
 </nrml>

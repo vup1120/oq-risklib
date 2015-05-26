@@ -129,9 +129,7 @@ def get_vulnerability_functions(fname):
     :returns:
         a dictionary imt, taxonomy -> vulnerability function
     """
-    # NB: the vulnerabilitySetID is not an unique ID!
-    # it is right to have several vulnerability sets with the same ID
-    # the IMTs can also be duplicated and with different levels, each
+    # NB: the IMTs can be duplicated and with different levels, each
     # vulnerability function in a set will get its own levels
     imts = set()
     taxonomies = set()

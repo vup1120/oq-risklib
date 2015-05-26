@@ -310,18 +310,20 @@ nodefactory.add(
     )(LiteralNode)
 
 
-def read(source):
+def read(source, chatty=True):
     """
     Convert a NRML file into a validated LiteralNode object. Keeps
     the entire tree in memory.
 
     :param source:
         a file name or file object open for reading
+    :param chatty:
+        log a warning when reading an obsolete format
     """
     nrml = parse(source).getroot()
     assert striptag(nrml.tag) == 'nrml', nrml.tag
     xmlns = nrml.tag.split('}')[0][1:]
-    if xmlns != NAMESPACE:
+    if xmlns != NAMESPACE and chatty:
         logging.warn('%s is at an outdated version: %s\n'
                      'You can run $ oq-lite upgrade_nrml <directory>' % (
                          source, xmlns))

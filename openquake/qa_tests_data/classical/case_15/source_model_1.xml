@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <nrml xmlns:gml="http://www.opengis.net/gml"
-      xmlns="http://openquake.org/xmlns/nrml/0.5">
+      xmlns="http://openquake.org/xmlns/nrml/0.4">
 
     <sourceModel name="Example source model consisting of 2 point sources, one belonging to Active Shallow Crust and one to Stable Continental Crust">
 
