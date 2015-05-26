@@ -26,7 +26,7 @@ import collections
 import numpy
 
 from openquake.commonlib.node import read_nodes, context, LiteralNode
-from openquake.commonlib import InvalidFile
+from openquake.commonlib import InvalidFile, nrml
 from openquake.risklib import scientific
 from openquake.baselib.general import AccumDict
 from openquake.commonlib.nrml import nodefactory
@@ -122,12 +122,6 @@ def build_vf_node(vf):
         {'id': vf.id, 'dist': vf.distribution_name}, nodes=nodes)
 
 
-def filter_vset(elem):
-    return elem.tag.endswith('discreteVulnerabilitySet')
-
-
-# this works only for discreteVulnerabilitySet, since there are no
-# continuousVulnerabilitySet
 def get_vulnerability_functions(fname):
     """
     :param fname:
@@ -142,34 +136,33 @@ def get_vulnerability_functions(fname):
     imts = set()
     taxonomies = set()
     vf_dict = {}  # imt, taxonomy -> vulnerability function
-    for vset in read_nodes(fname, filter_vset,
-                           nodefactory['vulnerabilityModel']):
-        imt_str, imls, min_iml, max_iml, imlUnit = ~vset.IML
-        imts.add(imt_str)
-        for vfun in vset.getnodes('discreteVulnerability'):
-            taxonomy = vfun['vulnerabilityFunctionID']
-            if taxonomy in taxonomies:
-                raise InvalidFile(
-                    'Duplicated vulnerabilityFunctionID: %s: %s, line %d' %
-                    (taxonomy, fname, vfun.lineno))
-            taxonomies.add(taxonomy)
-            with context(fname, vfun):
-                loss_ratios = ~vfun.lossRatio
-                coefficients = ~vfun.coefficientsVariation
-            if len(loss_ratios) != len(imls):
-                raise InvalidFile(
-                    'There are %d loss ratios, but %d imls: %s, line %d' %
-                    (len(loss_ratios), len(imls), fname,
-                     vfun.lossRatio.lineno))
-            if len(coefficients) != len(imls):
-                raise InvalidFile(
-                    'There are %d coefficients, but %d imls: %s, line %d' %
-                    (len(coefficients), len(imls), fname,
-                     vfun.coefficientsVariation.lineno))
-            with context(fname, vfun):
-                vf_dict[imt_str, taxonomy] = scientific.VulnerabilityFunction(
-                    taxonomy, imt_str, imls, loss_ratios, coefficients,
-                    vfun['probabilisticDistribution'])
+    vmodel = nrml.read(fname)[0]
+    for vfun in vmodel:
+        imt = vfun.imls['imt']
+        imts.add(imt)
+        taxonomy = vfun['id']
+        if taxonomy in taxonomies:
+            raise InvalidFile(
+                'Duplicated vulnerabilityFunctionID: %s: %s, line %d' %
+                (taxonomy, fname, vfun.lineno))
+        taxonomies.add(taxonomy)
+        with context(fname, vfun):
+            imls = ~vfun.imls
+            loss_ratios = ~vfun.meanLRs
+            coefficients = ~vfun.covLRs
+        if len(loss_ratios) != len(imls):
+            raise InvalidFile(
+                'There are %d loss ratios, but %d imls: %s, line %d' %
+                (len(loss_ratios), len(imls), fname,
+                 vfun.meanLRs.lineno))
+        if len(coefficients) != len(imls):
+            raise InvalidFile(
+                'There are %d coefficients, but %d imls: %s, line %d' %
+                (len(coefficients), len(imls), fname,
+                 vfun.covLRs.lineno))
+        with context(fname, vfun):
+            vf_dict[imt, taxonomy] = scientific.VulnerabilityFunction(
+                taxonomy, imt, imls, loss_ratios, coefficients, vfun['dist'])
     return vf_dict
 
 

@@ -199,9 +199,13 @@ class VulnerabilityNode(LiteralNode):
         # in the exposure model and it is not used by the engine
         lossCategory=valid.utf8,  # a description field
         IML=valid.IML,
-        lossRatio=valid.positivefloats,
-        coefficientsVariation=valid.positivefloats,
+        lossRatio=valid.positivefloats,  # obsolete
+        coefficientsVariation=valid.positivefloats,  # obsolete
         probabilisticDistribution=valid.Choice('LN', 'BT'),
+        dist=valid.Choice('LN', 'BT', 'PM'),
+        imls=lambda text, imt: valid.positivefloats(text),
+        meanLRs=valid.positivefloats,
+        covLRs=valid.positivefloats,
     )
 
 
