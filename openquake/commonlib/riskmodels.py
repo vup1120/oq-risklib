@@ -136,10 +136,10 @@ def get_vulnerability_functions(fname):
     taxonomies = set()
     vf_dict = {}  # imt, taxonomy -> vulnerability function
     node = nrml.read(fname)
-    xmlns = node.tag.split('}')[0][1:]
-    if xmlns != nrml.NAMESPACE:
-        raise InvalidFile('outdated: you can run $ oq-lite upgrade_nrml %s' %
-                          os.path.dirname(fname))
+    if node['xmlns'] != nrml.NAMESPACE:
+        raise InvalidFile(
+            'run `oq-lite upgrade_nrml %s` to update all NRML files' %
+            os.path.dirname(fname))
     vmodel = node[0]
     for vfun in vmodel:
         imt = vfun.imls['imt']
