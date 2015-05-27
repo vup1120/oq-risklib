@@ -19,16 +19,10 @@
 import os
 import logging
 
-import numpy
-
-from openquake.commonlib import parallel
+from openquake.commonlib import parallel, datastore
 from openquake.risklib import scientific
 from openquake.baselib.general import AccumDict
 from openquake.commonlib.calculators import base
-from openquake.commonlib.export import export
-from openquake.commonlib.risk_writers import (
-    DmgState, DmgDistPerTaxonomy, DmgDistPerAsset, DmgDistTotal,
-    ExposureData, Site)
 
 
 @parallel.litetask
@@ -51,14 +45,18 @@ def scenario_damage(riskinputs, riskmodel, rlzs_assoc, monitor):
     logging.info('Process %d, considering %d risk input(s) of weight %d',
                  os.getpid(), len(riskinputs),
                  sum(ri.weight for ri in riskinputs))
-    with monitor:
-        result = AccumDict()  # (key_type, key) -> result
-        for [out] in riskmodel.gen_outputs(riskinputs, rlzs_assoc, monitor):
-            # there is a single rlz
+    ordinals = range(len(rlzs_assoc.realizations))
+    result = AccumDict({i: AccumDict() for i in ordinals})
+    # ordinal -> (key_type, key) -> array
+    for out_by_rlz in riskmodel.gen_outputs(
+            riskinputs, rlzs_assoc, monitor):
+        for out in out_by_rlz:
             for asset, fraction in zip(out.assets, out.damages):
                 damages = fraction * asset.number
-                result += {('asset', asset): scientific.mean_std(damages)}
-                result += {('taxonomy', asset.taxonomy): damages}
+                result[out.hid] += {
+                    ('asset', asset): scientific.mean_std(damages)}
+                result[out.hid] += {
+                    ('taxonomy', asset.taxonomy): damages}
     return result
 
 
@@ -67,62 +65,17 @@ class ScenarioDamageCalculator(base.RiskCalculator):
     """
     Scenario damage calculator
     """
-    hazard_calculator = 'scenario'
+    pre_calculator = 'scenario'
     core_func = scenario_damage
-    result_kind = 'damages_by_key'
+    damages_by_key = datastore.persistent_attribute('damages_by_key')
+    gmf_by_trt_gsim = datastore.persistent_attribute('gmf_by_trt_gsim')
 
     def pre_execute(self):
+        if 'gmfs' in self.oqparam.inputs:
+            self.pre_calculator = None
         base.RiskCalculator.pre_execute(self)
         gmfs = base.get_gmfs(self)
         self.riskinputs = self.build_riskinputs(gmfs)
 
     def post_execute(self, result):
-        """
-        :param result: a dictionary {
-             ('asset', asset): <mean stddev>,
-             ('taxonomy', asset.taxonomy): <damage array>}
-        :returns: a dictionary {
-             'dmg_per_asset': /path/to/dmg_per_asset.xml,
-             'dmg_per_taxonomy': /path/to/dmg_per_taxonomy.xml,
-             'dmg_total': /path/to/dmg_total.xml}
-        """
-        dmg_states = [DmgState(s, i)
-                      for i, s in enumerate(self.riskmodel.damage_states)]
-        dd_taxo = []
-        dd_asset = []
-        shape = self.oqparam.number_of_ground_motion_fields, len(dmg_states)
-        totals = numpy.zeros(shape)  # R x D matrix
-        for (key_type, key), values in result.iteritems():
-            if key_type == 'taxonomy':
-                # values are fractions, R x D matrix
-                totals += values
-                means, stds = scientific.mean_std(values)
-                for dmg_state, mean, std in zip(dmg_states, means, stds):
-                    dd_taxo.append(
-                        DmgDistPerTaxonomy(key, dmg_state, mean, std))
-            elif key_type == 'asset':
-                means, stddevs = values
-                for dmg_state, mean, std in zip(dmg_states, means, stddevs):
-                    dd_asset.append(
-                        DmgDistPerAsset(
-                            ExposureData(key.id, Site(*key.location)),
-                            dmg_state, mean, std))
-        dd_total = []
-        for dmg_state, total in zip(dmg_states, totals.T):
-            mean, std = scientific.mean_std(total)
-            dd_total.append(DmgDistTotal(dmg_state, mean, std))
-
-        # export
-        f1 = export(('dmg_dist_per_asset', 'xml'), self.oqparam.export_dir,
-                    dmg_states, dd_asset)
-        f2 = export(('dmg_dist_per_taxonomy', 'xml'), self.oqparam.export_dir,
-                    dmg_states, dd_taxo)
-        f3 = export(('dmg_dist_total', 'xml'), self.oqparam.export_dir,
-                    dmg_states, dd_total)
-        max_damage = dmg_states[-1]
-        # the collapse map is extracted from the damage distribution per asset
-        # (dda) by taking the value corresponding to the maximum damage
-        collapse_map = [dda for dda in dd_asset if dda.dmg_state == max_damage]
-        f4 = export(('collapse_map', 'xml'), self.oqparam.export_dir,
-                    dmg_states, collapse_map)
-        return f1 + f2 + f3 + f4
+        self.damages_by_key = result

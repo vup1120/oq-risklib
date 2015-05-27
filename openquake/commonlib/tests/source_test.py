@@ -18,6 +18,7 @@ import mock
 import unittest
 from StringIO import StringIO
 
+import numpy
 from numpy.testing import assert_allclose
 
 from openquake.hazardlib import site
@@ -72,7 +73,7 @@ class NrmlSourceToHazardlibTestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        converter = s.SourceConverter(
+        cls.converter = s.SourceConverter(
             investigation_time=50.,
             rupture_mesh_spacing=1,  # km
             complex_fault_mesh_spacing=1,  # km
@@ -82,15 +83,13 @@ class NrmlSourceToHazardlibTestCase(unittest.TestCase):
         source_nodes = read_nodes(MIXED_SRC_MODEL, filter_sources, ValidNode)
         (cls.area, cls.point, cls.simple, cls.cmplx, cls.char_simple,
          cls.char_complex, cls.char_multi) = map(
-            converter.convert_node, source_nodes)
-
+            cls.converter.convert_node, source_nodes)
         # the parameters here would typically be specified in the job .ini
         cls.investigation_time = 50.
         cls.rupture_mesh_spacing = 1  # km
         cls.complex_fault_mesh_spacing = 1  # km
         cls.width_of_mfd_bin = 1.  # for Truncated GR MFDs
         cls.area_source_discretization = 1.  # km
-        cls.converter = converter
 
     @property
     def _expected_point(self):
@@ -184,7 +183,9 @@ class NrmlSourceToHazardlibTestCase(unittest.TestCase):
             ),
             dip=45.0,
             rake=30.0,
-            temporal_occurrence_model=PoissonTOM(50.)
+            temporal_occurrence_model=PoissonTOM(50.),
+            hypo_list=numpy.array([[0.25, 0.25, 0.3], [0.75, 0.75, 0.7]]),
+            slip_list=numpy.array([[90, 0.7], [135, 0.3]])
         )
         return simple
 
@@ -315,8 +316,8 @@ class NrmlSourceToHazardlibTestCase(unittest.TestCase):
         surfaces = [
             geo.PlanarSurface(
                 mesh_spacing=self.rupture_mesh_spacing,
-                strike=0.0,
-                dip=90.0,
+                strike=89.98254582,
+                dip=9.696547068,
                 top_left=geo.Point(-1, 1, 21),
                 top_right=geo.Point(1, 1, 21),
                 bottom_left=geo.Point(-1, -1, 59),
@@ -324,8 +325,8 @@ class NrmlSourceToHazardlibTestCase(unittest.TestCase):
             ),
             geo.PlanarSurface(
                 mesh_spacing=self.rupture_mesh_spacing,
-                strike=20.0,
-                dip=45.0,
+                strike=89.98254582,
+                dip=15.0987061388,
                 top_left=geo.Point(1, 1, 20),
                 top_right=geo.Point(3, 1, 20),
                 bottom_left=geo.Point(1, -1, 80),
@@ -333,7 +334,6 @@ class NrmlSourceToHazardlibTestCase(unittest.TestCase):
             )
         ]
         multi_surface = geo.MultiSurface(surfaces)
-
         char = source.CharacteristicFaultSource(
             source_id="7",
             name="characteristic source, multi surface",
@@ -358,16 +358,18 @@ class NrmlSourceToHazardlibTestCase(unittest.TestCase):
         assert_close(self._expected_complex, self.cmplx)
 
     def test_characteristic_simple(self):
+        self.char_simple.surface_node = None
         assert_close(self._expected_char_simple, self.char_simple)
 
     def test_characteristic_complex(self):
+        self.char_complex.surface_node = None
         assert_close(self._expected_char_complex, self.char_complex)
 
     def test_characteristic_multi(self):
         assert_close(self._expected_char_multi, self.char_multi)
 
     def test_duplicate_id(self):
-        converter = s.SourceConverter(
+        converter = s.SourceConverter(  # different from self.converter
             investigation_time=50.,
             rupture_mesh_spacing=1,
             complex_fault_mesh_spacing=1,
@@ -476,6 +478,65 @@ class NrmlSourceToHazardlibTestCase(unittest.TestCase):
         self.assertIn(
             "node areaSource: No subnode named 'nodalPlaneDist'"
             " found in 'areaSource', line 5 of", str(ctx.exception))
+
+    def test_hypolist_but_not_sliplist(self):
+        simple_file = StringIO("""\
+<?xml version='1.0' encoding='utf-8'?>
+<nrml xmlns:gml="http://www.opengis.net/gml"
+      xmlns="http://openquake.org/xmlns/nrml/0.4">
+    <sourceModel name="Some Source Model">
+        <simpleFaultSource
+        id="3"
+        name="Mount Diablo Thrust"
+        tectonicRegion="Active Shallow Crust"
+        >
+            <simpleFaultGeometry>
+                <gml:LineString>
+                    <gml:posList>
+                        -121.8229 37.7301 -122.0388 37.8771
+                    </gml:posList>
+                </gml:LineString>
+                <dip>
+                    45.0
+                </dip>
+                <upperSeismoDepth>
+                    10.0
+                </upperSeismoDepth>
+                <lowerSeismoDepth>
+                    20.0
+                </lowerSeismoDepth>
+            </simpleFaultGeometry>
+            <magScaleRel>
+                WC1994
+            </magScaleRel>
+            <ruptAspectRatio>
+                1.5
+            </ruptAspectRatio>
+            <incrementalMFD
+            binWidth="0.1"
+            minMag="5.0"
+            >
+                <occurRates>
+                    0.0010614989 0.00088291627 0.00073437777 0.0006108288 0.0005080653
+                </occurRates>
+            </incrementalMFD>
+            <rake>
+                30.0
+            </rake>
+            <hypoList>
+                <hypo alongStrike="0.25" downDip="0.25" weight="0.3"/>
+                <hypo alongStrike="0.75" downDip="0.75" weight="0.7"/>
+            </hypoList>
+        </simpleFaultSource>
+    </sourceModel>
+</nrml>
+""")
+        # check that the error raised by hazardlib is wrapped correctly
+        msg = ('node simpleFaultSource: hypo_list and slip_list have to be '
+               'both given')
+        with self.assertRaises(ValueError) as ctx:
+            parse_source_model(simple_file, self.converter)
+        self.assertIn(msg, str(ctx.exception))
 
     def test_nonparametric_source_ok(self):
         converter = s.SourceConverter(
@@ -687,7 +748,7 @@ Subduction Interface,b3,SadighEtAl1997,w=1.0>''')
         assoc = csm.get_rlzs_assoc(
             lambda trtmod: sum(src.count_ruptures() for src in trtmod.sources))
         [rlz] = assoc.realizations
-        self.assertEqual(assoc.gsim_by_trt[rlz],
+        self.assertEqual(assoc.gsim_by_trt[rlz.ordinal],
                          {'Subduction Interface': 'SadighEtAl1997',
                           'Active Shallow Crust': 'ChiouYoungs2008'})
         # ignoring the end of the tuple, with the uid field
@@ -708,11 +769,18 @@ Subduction Interface,b3,SadighEtAl1997,w=1.0>''')
             oqparam, sitecol, prefilter=True)
         self.assertEqual(len(csm), 9)  # the smlt example has 1 x 3 x 3 paths;
         # there are 2 distinct tectonic region types, so 18 trt_models
-        rlzs = csm.get_rlzs_assoc().realizations
+        rlzs_assoc = csm.get_rlzs_assoc()
+        rlzs = rlzs_assoc.realizations
         self.assertEqual(len(rlzs), 18)  # the gsimlt has 1 x 2 paths
         self.assertEqual([1, 584, 1, 584, 1, 584, 1, 582, 1, 582,
                           1, 582, 1, 582, 1, 582, 1, 582],
                          map(len, csm.trt_models))
+
+        # test the method csm_info.get_col_ids
+        col_ids_first = rlzs_assoc.csm_info.get_col_ids(rlzs[0])
+        self.assertEqual(col_ids_first, set([0, 1]))
+        col_ids_last = rlzs_assoc.csm_info.get_col_ids(rlzs[-1])
+        self.assertEqual(col_ids_last, set([16, 17]))
 
         # removing 9 trt_models out of 18
         for trt_model in csm.trt_models:
@@ -767,3 +835,9 @@ Subduction Interface,b3,SadighEtAl1997,w=1.0>''')
             "<RlzsAssoc\n"
             "0,SadighEtAl1997: ['<0,b1,b1,w=0.2>']\n"
             "1,SadighEtAl1997: ['<1,b2,b1,w=0.2,col=1>', '<2,b2,b1,w=0.2,col=2>', '<3,b2,b1,w=0.2,col=3>', '<4,b2,b1,w=0.2,col=4>']>")
+
+        # test the method csm_info.get_col_ids
+        col_ids_first = assoc.csm_info.get_col_ids(assoc.realizations[0])
+        self.assertEqual(col_ids_first, set([0]))
+        col_ids_last = assoc.csm_info.get_col_ids(assoc.realizations[-1])
+        self.assertEqual(col_ids_last, set([4]))

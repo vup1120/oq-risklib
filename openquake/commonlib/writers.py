@@ -17,7 +17,7 @@ import cStringIO
 from contextlib import contextmanager
 from xml.sax.saxutils import escape, quoteattr
 
-import numpy
+import numpy  # this is needed by the doctests, don't remove it
 
 
 @contextmanager
@@ -36,6 +36,9 @@ def floatformat(fmt_string):
         scientificformat.__defaults__ = fmt_defaults
 
 
+zeroset = set(['E', '-', '+', '.', '0'])
+
+
 def scientificformat(value, fmt='%13.9E', sep=' ', sep2=':'):
     """
     :param value: the value to convert into a string
@@ -46,6 +49,8 @@ def scientificformat(value, fmt='%13.9E', sep=' ', sep2=':'):
     Convert a float or an array into a string by using the scientific notation
     and a fixed precision (by default 10 decimal digits). For instance:
 
+    >>> scientificformat(-0E0)
+    '0.000000000E+00'
     >>> scientificformat(-0.004)
     '-4.000000000E-03'
     >>> scientificformat([0.004])
@@ -62,7 +67,11 @@ def scientificformat(value, fmt='%13.9E', sep=' ', sep2=':'):
     elif hasattr(value, '__len__'):
         return sep.join((scientificformat(f, fmt, sep2) for f in value))
     elif isinstance(value, float):
-        return fmt % value
+        fmt_value = fmt % value
+        if set(fmt_value) <= zeroset:
+            # '-0.0000000E+00' is converted into '0.0000000E+00
+            fmt_value = fmt_value.replace('-', '')
+        return fmt_value
     return str(value)
 
 
@@ -246,21 +255,23 @@ def extract_from(data, fields):
     return data
 
 
-def write_csv(dest, data, sep=',', fmt='%12.8E'):
+def write_csv(dest, data, sep=',', fmt='%12.8E', header=None):
     """
     :param dest: destination filename
     :param data: array to save
     :param sep: separator to use (default comma)
     :param fmt: formatting string (default '%12.8E')
+    :param header:
+       optional list with the names of the columns to display
     """
     try:
         # see if data is a composite numpy array
         data.dtype.fields
     except AttributeError:
         # not a composite array
-        header = []
+        header = header or []
     else:
-        header = build_header(data.dtype)
+        header = header or build_header(data.dtype)
     with open(dest, 'wb') as f:
         if header:
             f.write(sep.join(header) + '\n')

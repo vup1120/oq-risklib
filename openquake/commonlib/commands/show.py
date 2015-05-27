@@ -17,7 +17,7 @@
 #  along with OpenQuake.  If not, see <http://www.gnu.org/licenses/>.
 
 from openquake.commonlib import sap, datastore
-from openquake.baselib.general import ArrayDict, humansize
+from openquake.baselib.general import humansize
 from openquake.commonlib.commands.plot import combined_curves
 from openquake.commonlib.util import rmsep
 
@@ -27,26 +27,31 @@ def show(calc_id, key=None, rlzs=None):
     Show the content of a datastore.
 
     :param id: numeric calculation ID
-    :param key: dash-separated key of the datastore
+    :param key: key of the datastore
     :param rlzs: flag; if given, print out the realizations in order
     """
     ds = datastore.DataStore(calc_id)
     if key:
-        print ds[key.split('-')]
+        obj = ds[key]
+        if key.startswith('/') and hasattr(obj, 'value'):
+            print obj.value
+        else:
+            print obj
         return
     # print all keys
-    print ds['oqparam'].calculation_mode, ds, 'saved in %s contains:' % (
-        ds.calc_dir)
+    print ds['oqparam'].calculation_mode, \
+        'calculation saved in %s contains:' % ds.calc_dir
     for key in ds:
-        print key, humansize(ds.getsize(*key))
+        print key, humansize(ds.getsize(key))
     if rlzs and 'curves_by_trt_gsim' in ds:
         min_value = 0.01  # used in rmsep
         curves_by_rlz, mean_curves = combined_curves(ds)
         dists = []
         for rlz in sorted(curves_by_rlz):
-            mean = ArrayDict(mean_curves)
-            arr = ArrayDict(curves_by_rlz[rlz])
-            dists.append((rmsep(mean, arr, min_value), rlz))
+            curves = curves_by_rlz[rlz]
+            dist = sum(rmsep(mean_curves[imt], curves[imt], min_value)
+                       for imt in mean_curves.dtype.fields)
+            dists.append((dist, rlz))
         for dist, rlz in sorted(dists):
             print 'rlz=%s, rmsep=%s' % (rlz, dist)
 

@@ -24,7 +24,6 @@ This module includes the scientific API of the oq-risklib
 import abc
 import copy
 import itertools
-import collections
 import bisect
 
 import numpy
@@ -90,7 +89,7 @@ def fine_graining(points, steps):
 
 
 class VulnerabilityFunction(object):
-    def __init__(self, imt, imls, mean_loss_ratios, covs=None,
+    def __init__(self, vf_id, imt, imls, mean_loss_ratios, covs=None,
                  distribution="LN"):
         """
         A wrapper around a probabilistic distribution function
@@ -101,6 +100,7 @@ class VulnerabilityFunction(object):
         fields and epsilons and return a loss matrix with N x R
         elements.
 
+        :param str vf_id: Vulnerability Function ID
         :param str imt: Intensity Measure Type as a string
 
         :param list imls: Intensity Measure Levels for the
@@ -116,9 +116,10 @@ class VulnerabilityFunction(object):
         :param str distribution_name: The probabilistic distribution
             related to this function.
         """
+        self.id = vf_id
+        self.imt = imt
         self._check_vulnerability_data(
             imls, mean_loss_ratios, covs, distribution)
-        self.imt = imt
         self.imls = numpy.array(imls)
         self.mean_loss_ratios = numpy.array(mean_loss_ratios)
 
@@ -195,7 +196,7 @@ class VulnerabilityFunction(object):
                 previous_mlr = mlr
 
         return self.__class__(
-            self.imt, imls, mlrs, covs, self.distribution_name)
+            self.id, self.imt, imls, mlrs, covs, self.distribution_name)
 
     def mean_loss_ratios_with_steps(self, steps):
         """
@@ -239,15 +240,16 @@ class VulnerabilityFunction(object):
                 [self.imls[-1], self.imls[0], lambda x: x]))
 
     def __getstate__(self):
-        return (self.imt, self.imls, self.mean_loss_ratios,
+        return (self.id, self.imt, self.imls, self.mean_loss_ratios,
                 self.covs, self.distribution_name)
 
     def __setstate__(self, state):
-        self.imt = state[0]
-        self.imls = state[1]
-        self.mean_loss_ratios = state[2]
-        self.covs = state[3]
-        self.distribution_name = state[4]
+        self.id = state[0]
+        self.imt = state[1]
+        self.imls = state[2]
+        self.mean_loss_ratios = state[3]
+        self.covs = state[4]
+        self.distribution_name = state[5]
         self.init()
 
     def _check_vulnerability_data(self, imls, loss_ratios, covs, distribution):
@@ -333,7 +335,7 @@ class VulnerabilityFunction(object):
             [self.imls[-1] + ((self.imls[-1] - self.imls[-2]) / 2)])
 
     def __repr__(self):
-        return '<VulnerabilityFunction(%s)>' % self.imt
+        return '<VulnerabilityFunction(%s, %s)>' % (self.id, self.imt)
 
 
 class FragilityFunctionContinuous(object):
@@ -436,7 +438,7 @@ class Distribution(object):
     A Distribution class models continuous probability distribution of
     random variables used to sample losses of a set of assets. It is
     usually registered with a name (e.g. LN, BT) by using
-    :class:`openquake.risklib.utils.Register`
+    :class:`openquake.baselib.general.CallableDict`
     """
 
     __metaclass__ = abc.ABCMeta
@@ -621,6 +623,60 @@ class BetaDistribution(Distribution):
 # Event Based
 #
 
+class CurveBuilder(object):
+    """
+    Build loss ratio curves. The usage is something like this:
+
+      builder = CurveBuilder(curve_resolution)
+      counts = builder.build_counts(loss_matrix)
+      poes = builder.build_poes(counts, tses, time_span)
+      loss_ratio_curve = (builder.ratios, poes)
+    """
+    def __init__(self, curve_resolution):
+        self.curve_resolution = R = curve_resolution
+        self.ratios = numpy.linspace(0, 1, curve_resolution)
+        self.loss_curve_dt = numpy.dtype([
+            ('losses', (float, R)), ('poes', (float, R)), ('avg', float)])
+
+    def build_counts(self, loss_matrix):
+        """
+        :param loss_matrix:
+            a matrix of loss ratios of size N x R, N = #assets, R = #ruptures
+        """
+        N = len(loss_matrix)
+        counts = numpy.zeros((N, self.curve_resolution), numpy.uint32)
+        for i, loss_ratios in enumerate(loss_matrix):
+            # build the counts for each asset
+            counts[i, :] = numpy.array([(loss_ratios > ratio).sum()
+                                        for ratio in self.ratios])
+        return counts
+
+    def build_poes(self, counts, tses, time_span):
+        """
+        :param counts: an array of counts of exceedence for the bins
+        :param tses: Time representative of the stochastic event set
+        :param time_span: Investigation Time spanned by the hazard input
+        :returns: an array of PoEs
+        """
+        rates_of_exceedance = numpy.array(counts, float) / tses
+        return 1. - numpy.exp(-rates_of_exceedance * time_span)
+
+    def build_loss_curves(self, poe_matrix, asset_values):
+        """
+        :param poe_matrix: a matrix N x C
+        :param asset_values: N asset values for a given loss_type
+        """
+        N = len(asset_values)
+        assert len(poe_matrix) == N, (len(poe_matrix), N)
+        lcs = numpy.zeros(N, self.loss_curve_dt)
+        for i, value in enumerate(asset_values):
+            losses = self.ratios * value
+            poes = poe_matrix[i]
+            avg = average_loss((losses, poes))
+            lcs[i] = (losses, poes, avg)
+        return lcs
+
+
 def event_based(loss_values, tses, time_span, curve_resolution):
     """
     Compute a loss (or loss ratio) curve.
@@ -630,7 +686,7 @@ def event_based(loss_values, tses, time_span, curve_resolution):
 
     :param tses: Time representative of the stochastic event set
 
-    :param time_span: Investigation Time spanned by the hazard input
+    :param time_span: Investigation Time spanned by the risk input
 
     :param curve_resolution: The number of points the output curve is
                              defined by
@@ -1081,14 +1137,14 @@ def normalize_curves_eb(curves):
     :param curves: a list of pairs (losses, poes)
     :returns: first losses, all_poes
     """
-    non_trivial_curves = [(losses, poes)
-                          for losses, poes in curves if losses[-1] > 0]
-    if not non_trivial_curves:  # no damage. all trivial curves
+    # we assume non-decreasing losses, so losses[-1] is the maximum loss
+    non_zero_curves = [(losses, poes)
+                       for losses, poes in curves if losses[-1] > 0]
+    if not non_zero_curves:  # no damage. all zero curves
         return curves[0][0], [poes for _losses, poes in curves]
     else:  # standard case
-        max_losses = [losses[-1]  # we assume non-decreasing losses
-                      for losses, _poes in non_trivial_curves]
-        reference_curve = non_trivial_curves[numpy.argmax(max_losses)]
+        max_losses = [losses[-1] for losses, _poes in non_zero_curves]
+        reference_curve = non_zero_curves[numpy.argmax(max_losses)]
         loss_ratios = reference_curve[0]
         curves_poes = [interpolate.interp1d(
             losses, poes, bounds_error=False, fill_value=0)(loss_ratios)
@@ -1188,12 +1244,8 @@ class StatsBuilder(object):
             mean_average_insured_losses=mean_average_insured_losses,
             quantile_insured_curves=quantile_insured_curves,
             quantile_average_insured_losses=quantile_average_insured_losses,
-            quantiles=self.quantiles)
-
-
-LossCurvePerAsset = collections.namedtuple(
-    'LossCurvePerAsset', 'asset losses poes average_loss')
-LossMapPerAsset = collections.namedtuple('LossMapPerAsset', 'asset loss')
+            quantiles=self.quantiles,
+            conditional_loss_poes=self.conditional_loss_poes)
 
 
 def _combine_mq(mean, quantile):
@@ -1208,16 +1260,18 @@ def _combine_mq(mean, quantile):
 
 
 def _loss_curves(assets, mean, mean_averages, quantile, quantile_averages):
-    # return a list of LossCurvePerAsset instances
-    curves = _combine_mq(mean, quantile)  # shape (Q + 1, N, 2, R)
-    averages = _combine_mq(mean_averages, quantile_averages)  # (Q + 1, N)
+    R = mean.shape[-1]
+    loss_curve_dt = numpy.dtype([('losses', (float, R)), ('poes', (float, R)),
+                                 ('avg', float)])
+    mq_curves = _combine_mq(mean, quantile)  # shape (Q + 1, N, 2, R)
+    mq_avgs = _combine_mq(mean_averages, quantile_averages)  # (Q + 1, N)
     acc = []
-    for asset, curve, avg in zip(
-            assets, curves.transpose(1, 0, 2, 3), averages.T):
-        losses = [l for l, p in curve]
-        poes = [p for l, p in curve]
-        acc.append(LossCurvePerAsset(asset, losses, poes, avg))
-    return acc
+    for mq_curve, mq_avg in zip(mq_curves.transpose(1, 0, 2, 3), mq_avgs.T):
+        lcs = []
+        for (losses, poes), avg in zip(mq_curve, mq_avg):
+            lcs.append((losses, poes, avg))
+        acc.append(numpy.array(lcs, loss_curve_dt))
+    return numpy.array(acc, loss_curve_dt).T  # (Q + 1, N)
 
 
 def get_stat_curves(stats):
@@ -1241,9 +1295,17 @@ def get_stat_curves(stats):
         stats.quantile_insured_curves,
         stats.quantile_average_insured_losses)
 
-    maps = []
-    mq = _combine_mq(stats.mean_maps, stats.quantile_maps)
-    for asset, loss in zip(stats.assets, mq.transpose(2, 0, 1)):
-        maps.append(LossMapPerAsset(asset, loss))
+    if stats.conditional_loss_poes:
+        mq = _combine_mq(stats.mean_maps, stats.quantile_maps)
 
-    return curves, insured_curves, maps
+        poes = ['poe~%s' % clp for clp in stats.conditional_loss_poes]
+        loss_map_dt = numpy.dtype([(poe, float) for poe in poes])
+
+        Q1, P, N = mq.shape
+        maps = numpy.zeros((Q1, N), loss_map_dt)
+        for i, imaps in enumerate(mq):
+            for poe, imap in zip(poes, imaps):
+                maps[i, :][poe] = imap
+    else:
+        maps = []
+    return curves, insured_curves, maps  # shape (Q1, N)

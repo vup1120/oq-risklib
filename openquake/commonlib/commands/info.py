@@ -17,8 +17,9 @@
 #  along with OpenQuake.  If not, see <http://www.gnu.org/licenses/>.
 
 import textwrap
-from openquake.commonlib import sap, readinput
+from openquake.commonlib import sap, readinput, nrml
 from openquake.commonlib.calculators import base
+from openquake.hazardlib import gsim
 
 
 # the documentation about how to use this feature can be found
@@ -30,31 +31,36 @@ def info(name, filtersources=False):
     """
     if name in base.calculators:
         print textwrap.dedent(base.calculators[name].__doc__.strip())
+    elif name == 'gsims':
+        for gs in gsim.get_available_gsims():
+            print gs
+    elif name.endswith('.xml'):
+        print nrml.read(name).to_str()
     elif name.endswith('.ini'):
         oqparam = readinput.get_oqparam(name)
-        if filtersources:
-            if 'exposure' in oqparam.inputs:
-                expo = readinput.get_exposure(oqparam)
-                sitecol, assets_by_site = readinput.get_sitecol_assets(
-                    oqparam, expo)
-            else:
-                sitecol, assets_by_site = readinput.get_site_collection(
-                    oqparam), []
+        if 'exposure' in oqparam.inputs:
+            expo = readinput.get_exposure(oqparam)
+            sitecol, assets_by_site = readinput.get_sitecol_assets(
+                oqparam, expo)
+        elif filtersources:
+            sitecol, assets_by_site = readinput.get_site_collection(
+                oqparam), []
         else:
             sitecol, assets_by_site = None, []
-        csm = readinput.get_composite_source_model(
-            oqparam, sitecol, prefilter=filtersources, in_memory=filtersources)
-        assoc = csm.get_rlzs_assoc()
-        print assoc.csm_info
-        print assoc
-        if filtersources:
-            # display information about the size of the hazard curve matrices
-            tup = (len(sitecol),
-                   sum(len(imls) for imls in oqparam.imtls.values() if imls),
-                   len(assoc))
-            size_mb = (tup[0] * tup[1] * tup[2] * 8.) / 1024 / 1024
-            if size_mb:
-                print "sites, levels, keys = %s [~%d MB]" % (tup, size_mb)
+        if 'source_model_logic_tree' in oqparam.inputs:
+            print 'Reading the source model...'
+            csm = readinput.get_composite_source_model(
+                oqparam, sitecol, prefilter=filtersources,
+                in_memory=filtersources)
+            assoc = csm.get_rlzs_assoc()
+            print assoc.csm_info
+            print('See https://github.com/gem/oq-risklib/blob/master/docs/'
+                  'effective-realizations.rst for an explanation')
+            print assoc
+            if filtersources:
+                info = readinput.get_job_info(oqparam, csm, sitecol)
+                for k in sorted(info):
+                    print k, info[k]
         if len(assets_by_site):
             print 'assets = %d' % sum(len(assets) for assets in assets_by_site)
     else:

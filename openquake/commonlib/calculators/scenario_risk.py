@@ -18,20 +18,10 @@
 
 import os
 import logging
-import collections
 
-from openquake.risklib import scientific
 from openquake.baselib import general
-from openquake.commonlib import riskmodels, parallel
+from openquake.commonlib import parallel, datastore
 from openquake.commonlib.calculators import base
-from openquake.commonlib.export import export
-
-
-AggLoss = collections.namedtuple(
-    'AggLoss', 'loss_type unit mean stddev')
-
-PerAssetLoss = collections.namedtuple(  # the loss map
-    'PerAssetLoss', 'loss_type unit asset_ref mean stddev')
 
 
 def losses_per_asset(tag, loss_type, assets, means, stddevs,
@@ -74,25 +64,26 @@ def scenario_risk(riskinputs, riskmodel, rlzs_assoc, monitor):
     logging.info('Process %d, considering %d risk input(s) of weight %d',
                  os.getpid(), len(riskinputs),
                  sum(ri.weight for ri in riskinputs))
-    with monitor:
-        result = general.AccumDict()  # agg_type, loss_type -> losses
-        for out_by_rlz in riskmodel.gen_outputs(
-                riskinputs, rlzs_assoc, monitor):
-            for out in out_by_rlz:
-                assets = out.assets
-                means = out.loss_matrix.mean(axis=1),
-                stddevs = out.loss_matrix.std(ddof=1, axis=1)
-                result += losses_per_asset(
-                    'asset-loss', out.loss_type, assets, means, stddevs)
-                result += {('agg', out.loss_type): out.aggregate_losses}
+    result = general.AccumDict({rlz.ordinal: general.AccumDict()
+                                for rlz in rlzs_assoc.realizations})
+    # ordinal -> agg_type, loss_type -> losses
+    for out_by_rlz in riskmodel.gen_outputs(
+            riskinputs, rlzs_assoc, monitor):
+        for out in out_by_rlz:
+            assets = out.assets
+            means = out.loss_matrix.mean(axis=1),
+            stddevs = out.loss_matrix.std(ddof=1, axis=1)
+            result[out.hid] += losses_per_asset(
+                'asset-loss', out.loss_type, assets, means, stddevs)
+            result[out.hid] += {('agg', out.loss_type): out.aggregate_losses}
 
-                if out.insured_loss_matrix is not None:
-                    means = out.insured_loss_matrix.mean(axis=1),
-                    stddevs = out.insured_loss_matrix.std(ddof=1, axis=1)
-                    result += losses_per_asset(
-                        'asset-ins', out.loss_type, assets, means, stddevs,
-                        multiply_by_value=False)
-                    result += {('ins', out.loss_type): out.insured_losses}
+            if out.insured_loss_matrix is not None:
+                means = out.insured_loss_matrix.mean(axis=1),
+                stddevs = out.insured_loss_matrix.std(ddof=1, axis=1)
+                result[out.hid] += losses_per_asset(
+                    'asset-ins', out.loss_type, assets, means, stddevs,
+                    multiply_by_value=False)
+                result[out.hid] += {('ins', out.loss_type): out.insured_losses}
     return result
 
 
@@ -102,43 +93,27 @@ class ScenarioRiskCalculator(base.RiskCalculator):
     Run a scenario risk calculation
     """
     core_func = scenario_risk
-    result_kind = 'losses_by_key'
-    hazard_calculator = 'scenario'
+    losses_by_key = datastore.persistent_attribute('losses_by_key')
+    gmf_by_trt_gsim = datastore.persistent_attribute('gmf_by_trt_gsim')
+    pre_calculator = 'scenario'
 
     def pre_execute(self):
         """
         Compute the GMFs, build the epsilons, the riskinputs, and a dictionary
         with the unit of measure, used in the export phase.
         """
+        if 'gmfs' in self.oqparam.inputs:
+            self.pre_calculator = None
         base.RiskCalculator.pre_execute(self)
-        gmfs = base.get_gmfs(self)
 
         logging.info('Building the epsilons')
         eps_dict = self.make_eps_dict(
             self.oqparam.number_of_ground_motion_fields)
 
-        self.riskinputs = self.build_riskinputs(gmfs, eps_dict)
-        self.unit = {riskmodels.cost_type_to_loss_type(ct['name']): ct['unit']
-                     for ct in self.exposure.cost_types}
-        self.unit['fatalities'] = 'people'
+        self.riskinputs = self.build_riskinputs(base.get_gmfs(self), eps_dict)
 
     def post_execute(self, result):
         """
-        Export the aggregate loss curves in CSV format.
+        Export the loss curves and the aggregated losses in CSV format
         """
-        losses = general.AccumDict()
-        for key, values in result.iteritems():
-            key_type, loss_type = key
-            unit = self.unit[loss_type]
-            if key_type in ('agg', 'ins'):
-                mean, std = scientific.mean_std(values)
-                losses += {key_type: [
-                    AggLoss(loss_type, unit, mean, std)]}
-            else:
-                losses += {key_type: [
-                    PerAssetLoss(loss_type, unit, *vals) for vals in values]}
-        out = {}
-        for key_type in losses:
-            out += export((key_type, 'csv'),
-                          self.oqparam.export_dir, losses[key_type])
-        return out
+        self.losses_by_key = result

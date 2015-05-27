@@ -27,6 +27,8 @@ import textwrap
 import collections
 from decimal import Decimal
 
+import numpy
+
 from openquake.hazardlib import imt, scalerel, gsim
 from openquake.baselib.general import distinct
 
@@ -102,7 +104,7 @@ class Choice(object):
         self.choices = choices
 
     def __call__(self, value):
-        if not value in self.choices:
+        if value not in self.choices:
             raise ValueError('Got %r, expected %s' % (
                              value, '|'.join(self.choices)))
         return value
@@ -118,12 +120,31 @@ class ChoiceCI(object):
 
     def __call__(self, value):
         value = value.lower()
-        if not value in self.choices:
+        if value not in self.choices:
             raise ValueError('%r is not a valid choice in %s' % (
                              value, self.choices))
         return value
 
 category = ChoiceCI('population', 'buildings')
+
+
+class Choices(Choice):
+    """
+    Convert the choices, passed as a comma separated string, into a tuple
+    of validated strings. For instance
+
+    >>> Choices('xml', 'csv')('xml,csv')
+    ('xml', 'csv')
+    """
+    def __call__(self, value):
+        values = value.lower().split(',')
+        for val in values:
+            if val not in self.choices:
+                raise ValueError('%r is not a valid choice in %s' % (
+                    val, self.choices))
+        return tuple(values)
+
+export_formats = Choices('xml', 'csv', 'geojson')
 
 
 class Regex(object):
@@ -563,7 +584,7 @@ def dictionary(value):
     return dic
 
 
-############################# SOURCES/RUPTURES ###############################
+# ########################### SOURCES/RUPTURES ############################# #
 
 def mag_scale_rel(value):
     """
@@ -595,6 +616,42 @@ def pmf(value):
     if sum(map(Decimal, value.split())) != 1:
         raise ValueError('The probabilities %s do not sum up to 1!' % value)
     return [(p, i) for i, p in enumerate(probs)]
+
+
+def check_weights(nodes_with_a_weight):
+    """
+    Ensure that the sum of the values is 1
+
+    :param nodes_with_a_weight: a list of Node objects with a weight attribute
+    """
+    weights = [n['weight'] for n in nodes_with_a_weight]
+    if abs(sum(weights) - 1.) > 1E-12:
+        raise ValueError('The weights do not sum up to 1!', weights)
+    return nodes_with_a_weight
+
+
+def hypo_list(nodes):
+    """
+    :param nodes: a hypoList node with N hypocenter nodes
+    :returns: a numpy array of shape (N, 3) with strike, dip and weight
+    """
+    check_weights(nodes)
+    data = []
+    for node in nodes:
+        data.append([node['alongStrike'], node['downDip'], node['weight']])
+    return numpy.array(data, float)
+
+
+def slip_list(nodes):
+    """
+    :param nodes: a slipList node with N slip nodes
+    :returns: a numpy array of shape (N, 2) with slip angle and weight
+    """
+    check_weights(nodes)
+    data = []
+    for node in nodes:
+        data.append([slip_range(~node), node['weight']])
+    return numpy.array(data, float)
 
 
 def posList(value):
@@ -655,6 +712,7 @@ def probability_depth(value, probability, depth):
 
 
 strike_range = FloatRange(0, 360)
+slip_range = strike_range
 dip_range = FloatRange(0, 90)
 rake_range = FloatRange(-180, 180)
 

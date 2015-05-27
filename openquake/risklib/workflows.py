@@ -16,7 +16,6 @@
 # License along with OpenQuake Risklib. If not, see
 # <http://www.gnu.org/licenses/>.
 
-import os
 import inspect
 import functools
 import collections
@@ -143,8 +142,8 @@ def out_by_rlz(workflow, assets, hazards, epsilons, tags, loss_type):
     Yield lists out_by_rlz
     """
     out_by_rlz = []
-    for rlz in hazards[0]:
-        hazs = [haz[rlz] for haz in hazards]
+    for rlz in hazards[0]:  # extract the realizations from the first asset
+        hazs = [haz[rlz] for haz in hazards]  # hazard per each asset
         out = workflow(loss_type, assets, hazs, epsilons, tags)
         out.hid = rlz.ordinal
         out.weight = rlz.weight
@@ -197,6 +196,9 @@ class Workflow(object):
                 tags_ = tags[ok]
             yield out_by_rlz(
                 self, assets_, hazards, epsilons_, tags_, loss_type)
+
+    def __repr__(self):
+        return '<%s%s>' % (self.__class__.__name__, self.risk_functions.keys())
 
 
 @registry.add('classical_risk')
@@ -427,6 +429,7 @@ class ProbabilisticEventBased(Workflow):
         self.imt = imt
         self.taxonomy = taxonomy
         self.risk_functions = vulnerability_functions
+        self.loss_curve_resolution = loss_curve_resolution
         self.curves = functools.partial(
             scientific.event_based, curve_resolution=loss_curve_resolution,
             time_span=risk_investigation_time, tses=tses)
@@ -486,10 +489,12 @@ class ProbabilisticEventBased(Workflow):
             ila = numpy.zeros((len(ground_motion_values[0]), len(assets)))
         if isinstance(assets[0].id, basestring):
             # in oq-lite return early, with just the losses per asset
+            cb = scientific.CurveBuilder(self.loss_curve_resolution)
             return scientific.Output(
                 assets, loss_type,
                 event_loss_per_asset=ela,
                 insured_loss_per_asset=ila,
+                counts_matrix=cb.build_counts(loss_matrix),
                 tags=event_ids)
 
         # in the engine, compute more stuff on the workers

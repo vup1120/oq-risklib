@@ -21,6 +21,7 @@ import csv
 import gzip
 import zipfile
 import logging
+import operator
 import tempfile
 import collections
 import ConfigParser
@@ -102,7 +103,7 @@ def get_params(job_inis):
                           'job.ini', 'job_risk.ini'])
 
     not_found = [ini for ini in job_inis if not os.path.exists(ini)]
-    if len(not_found) == len(job_inis):  # nothing was found
+    if not_found:  # something was not found
         raise IOError('File not found: %s' % not_found[0])
 
     cp = ConfigParser.ConfigParser()
@@ -176,13 +177,13 @@ def get_mesh(oqparam):
         an :class:`openquake.commonlib.oqvalidation.OqParam` instance
     """
     if oqparam.sites:
-        lons, lats = zip(*oqparam.sites)
+        lons, lats = zip(*sorted(oqparam.sites))
         return geo.Mesh(numpy.array(lons), numpy.array(lats))
     elif 'sites' in oqparam.inputs:
         csv_data = open(oqparam.inputs['sites'], 'U').read()
         coords = valid.coordinates(
             csv_data.strip().replace(',', ' ').replace('\n', ','))
-        lons, lats = zip(*coords)
+        lons, lats = zip(*sorted(coords))
         return geo.Mesh(numpy.array(lons), numpy.array(lats))
     elif oqparam.region:
         # close the linear polygon ring by appending the first
@@ -197,11 +198,9 @@ def get_mesh(oqparam):
                 '%(region_grid_spacing)s' % vars(oqparam))
     elif 'site_model' in oqparam.inputs:
         coords = [(param.lon, param.lat) for param in get_site_model(oqparam)]
-        lons, lats = zip(*coords)
+        lons, lats = zip(*sorted(coords))
         return geo.Mesh(numpy.array(lons), numpy.array(lats))
-    elif 'exposure' in oqparam.inputs:
-        raise RuntimeError('You can extract the site collection from the '
-                           'exposure with get_sitecol_assets')
+    # if there is an exposure the mesh is extracted from get_sitecol_assets
 
 
 def get_site_model(oqparam):
@@ -237,7 +236,7 @@ def get_site_collection(oqparam, mesh=None, site_ids=None,
         model parameters
     """
     mesh = mesh or get_mesh(oqparam)
-    site_ids = site_ids or range(1, len(mesh) + 1)
+    site_ids = site_ids or range(len(mesh))
     if oqparam.inputs.get('site_model'):
         if site_model_params is None:
             # read the parameters directly from their file
@@ -284,14 +283,15 @@ def get_rlzs_assoc(oqparam):
             gsim_file = os.path.join(
                 oqparam.base_path, oqparam.inputs['gsim_logic_tree'])
             raise InvalidFile(
-                'The gsim logic tree file % must contain a single tectonic '
-                'region type, found %s instead ' % gsim_file,
-                list(gsim_lt.values))
-        rlzs = sorted(get_gsim_lt(oqparam, []))
+                'The gsim logic tree file %s must contain a single tectonic '
+                'region type, found %s instead ' % (
+                    gsim_file, list(gsim_lt.values)))
+        trt = gsim_lt.values
+        rlzs = sorted(get_gsim_lt(oqparam, trt))
     else:
         rlzs = [
             logictree.Realization(
-                value=(oqparam.gsim,), weight=1, lt_path=('',),
+                value=(str(oqparam.gsim),), weight=1, lt_path=('',),
                 ordinal=0, lt_uid=('*',))]
     return logictree.RlzsAssoc(rlzs)
 
@@ -691,8 +691,8 @@ def get_exposure(oqparam):
         ct['name']: (ct['type'] == 'aggregated' or
                      exposure.area['type'] == 'aggregated')
         for ct in exposure.cost_types}
-    relevant_cost_types = set(vulnerability_files(oqparam.inputs)) - \
-        set(['occupants'])
+    all_cost_types = set(vulnerability_files(oqparam.inputs))
+    relevant_cost_types = all_cost_types - set(['occupants'])
     asset_refs = set()
     time_event = oqparam.time_event
     ignore_missing_costs = set(oqparam.ignore_missing_costs)
@@ -727,8 +727,8 @@ def get_exposure(oqparam):
                 except KeyError:
                     number = 1
                 else:
-                    # this is needed by the classical_risk calculator
-                    values['fatalities'] = number
+                    if 'occupants' in all_cost_types:
+                        values['fatalities'] = number
 
             location = asset.location['lon'], asset.location['lat']
             if region and not geometry.Point(*location).within(region):
@@ -744,8 +744,12 @@ def get_exposure(oqparam):
                 if cost_type not in relevant_cost_types:
                     continue
                 values[cost_type] = cost['value']
-                deductibles[cost_type] = cost.attrib.get('deductible')
-                insurance_limits[cost_type] = cost.attrib.get('insuranceLimit')
+                deduct = cost.attrib.get('deductible')
+                if deduct is not None:
+                    deductibles[cost_type] = deduct
+                limit = cost.attrib.get('insuranceLimit')
+                if limit is not None:
+                    insurance_limits[cost_type] = limit
 
             # check we are not missing a cost type
             missing = relevant_cost_types - set(values)
@@ -816,9 +820,11 @@ def get_sitecol_assets(oqparam, exposure):
     lons, lats = zip(*sorted(assets_by_loc))
     mesh = geo.Mesh(numpy.array(lons), numpy.array(lats))
     sitecol = get_site_collection(oqparam, mesh)
-    return sitecol, numpy.array([
-        assets_by_loc[site.location.longitude, site.location.latitude]
-        for site in sitecol])
+    assets_by_site = []
+    for s in sitecol:
+        assets = assets_by_loc[s.location.longitude, s.location.latitude]
+        assets_by_site.append(sorted(assets, key=operator.attrgetter('id')))
+    return sitecol, numpy.array(assets_by_site)
 
 
 def get_mesh_csvdata(csvfile, imts, num_values, validvalues):

@@ -48,14 +48,11 @@ class CalculatorTestCase(unittest.TestCase):
             else testfile
         inis = [os.path.join(self.testdir, ini) for ini in job_ini.split(',')]
         params = readinput.get_params(inis)
-        kw.setdefault('usecache', '0')
         params.update(kw)
         oq = oqvalidation.OqParam(**params)
         oq.validate()
         # change this when debugging the test
-        monitor = PerformanceMonitor(
-            self.testdir,
-            monitor_csv=os.path.join(oq.export_dir, 'performance.csv'))
+        monitor = PerformanceMonitor(self.testdir)
         return base.calculators(oq, monitor)
 
     def run_calc(self, testfile, job_ini, **kw):
@@ -63,8 +60,7 @@ class CalculatorTestCase(unittest.TestCase):
         Return the outputs of the calculation as a dictionary
         """
         self.calc = self.get_calc(testfile, job_ini, **kw)
-        self.calc.run()
-        return self.calc.datastore['exported']
+        return self.calc.run()
 
     def execute(self, testfile, job_ini):
         """

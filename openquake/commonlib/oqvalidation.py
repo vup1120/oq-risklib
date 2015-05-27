@@ -56,13 +56,13 @@ class OqParam(valid.ParamSet):
     epsilon_sampling = valid.Param(valid.positiveint, 1000)
     export_dir = valid.Param(valid.utf8, None)
     export_multi_curves = valid.Param(valid.boolean, False)
-    exports = valid.Param(valid.Choice('csv', 'xml', 'geojson'), 'csv')
+    exports = valid.Param(valid.export_formats, ('csv',))
     ground_motion_correlation_model = valid.Param(
         valid.NoneOr(valid.Choice(*GROUND_MOTION_CORRELATION_MODELS)), None)
     ground_motion_correlation_params = valid.Param(valid.dictionary)
     ground_motion_fields = valid.Param(valid.boolean, False)
-    gsim = valid.Param(str)  # it is validated in pre_execute anyway
-    hazard_calculation_id = valid.Param(valid.NoneOr(valid.positiveint))
+    gsim = valid.Param(valid.gsim, None)
+    hazard_calculation_id = valid.Param(valid.NoneOr(valid.positiveint), None)
     hazard_curves_from_gmfs = valid.Param(valid.boolean, False)
     hazard_output_id = valid.Param(valid.NoneOr(valid.positiveint))
     hazard_maps = valid.Param(valid.boolean, False)
@@ -117,13 +117,14 @@ class OqParam(valid.ParamSet):
     time_event = valid.Param(str, None)
     truncation_level = valid.Param(valid.NoneOr(valid.positivefloat), None)
     uniform_hazard_spectra = valid.Param(valid.boolean, False)
-    usecache = valid.Param(valid.boolean, False)
     width_of_mfd_bin = valid.Param(valid.positivefloat)
 
     def __init__(self, **names_vals):
         super(OqParam, self).__init__(**names_vals)
         if not self.risk_investigation_time and self.investigation_time:
             self.risk_investigation_time = self.investigation_time
+        elif not self.investigation_time and self.hazard_investigation_time:
+            self.investigation_time = self.hazard_investigation_time
         if 'intensity_measure_types' in names_vals:
             self.hazard_imtls = dict.fromkeys(self.intensity_measure_types)
             delattr(self, 'intensity_measure_types')
@@ -145,8 +146,8 @@ class OqParam(valid.ParamSet):
         Return the total time as investigation_time * ses_per_logic_tree_path *
         (number_of_logic_tree_samples or 1)
         """
-        return self.investigation_time * self.ses_per_logic_tree_path * (
-            self.number_of_logic_tree_samples or 1)
+        return (self.hazard_investigation_time * self.ses_per_logic_tree_path *
+                (self.number_of_logic_tree_samples or 1))
 
     @property
     def imtls(self):
@@ -231,6 +232,12 @@ class OqParam(valid.ParamSet):
         `intensity_measure_types_and_levels` is set directly,
         `intensity_measure_types` must not be set.
         """
+        if self.ground_motion_correlation_model:
+            for imt in self.imtls:
+                if not (imt.startswith('SA') or imt == 'PGA'):
+                    raise ValueError(
+                        'Correlation model %s does not accept IMT=%s' % (
+                            self.ground_motion_correlation_model, imt))
         if fragility_files(self.inputs) or vulnerability_files(self.inputs):
             return (self.intensity_measure_types is None
                     and self.intensity_measure_types_and_levels is None)
@@ -318,4 +325,13 @@ class OqParam(valid.ParamSet):
         rms = getattr(self, 'rupture_mesh_spacing', None)
         if rms and not getattr(self, 'complex_fault_mesh_spacing', None):
             self.complex_fault_mesh_spacing = self.rupture_mesh_spacing
+        return True
+
+    def is_valid_gsim(self):
+        """
+        If `gsim_logic_tree_file` is set, there must be no `gsim` key in
+        the configuration file.
+        """
+        if 'gsim_logic_tree' in self.inputs:
+            return self.gsim is None
         return True
