@@ -34,7 +34,7 @@ from openquake.risklib import workflows, riskinput
 
 from openquake.commonlib.oqvalidation import OqParam
 from openquake.commonlib.node import read_nodes, LiteralNode, context
-from openquake.commonlib import nrml, valid, logictree, InvalidFile, parallel
+from openquake.commonlib import nrml, valid, logictree, InvalidFile
 from openquake.commonlib.oqvalidation import vulnerability_files
 from openquake.commonlib.riskmodels import \
     get_fragility_functions, get_vfs
@@ -458,7 +458,9 @@ def get_filtered_source_models(oqparam, source_model_lt, sitecol,
         an iterator over :class:`openquake.commonlib.source.SourceModel`
         tuples skipping the empty models
     """
-    sites_polygon = sitecol.mesh.get_convex_hull()._polygon2d
+    #sites_polygon = sitecol.mesh.get_convex_hull()._polygon2d
+    sites_polygon = geometry.MultiPoint(
+        zip(sitecol.mesh.lons, sitecol.mesh.lats))
     for source_model in get_source_models(
             oqparam, source_model_lt, in_memory=in_memory):
         for trt_model in list(source_model.trt_models):
