@@ -276,21 +276,20 @@ def get_col_id(tag):
 
 def check_gsims_imts(rlzs_assoc, imts):
     """
-    :param rlzs_assoc:
-    :param imts:
+    :param rlzs_assoc: a :class:`RlzsAssoc` object
+    :param imts: a sequence of intensity measure types
     """
-    valid_imts = set()
-    required_gsims = set()
+    imts = set(imt[2:] if imt.startswith('SA') else imt for imt in imts)
     for gsims in rlzs_assoc.get_gsims_by_trt_id().values():
         for gsim in gsims:
-            required_gsims.add(str(gsim))
-            ok_imts = gsim.DEFINED_FOR_INTENSITY_MEASURE_TYPES
-            if ok_imts:
-                valid_imts.update(map(str, ok_imts))
-    invalid_imts = set(imts) - valid_imts
-    if invalid_imts:
-        raise ValueError('The IMTs %s are not accepted by the GSIMs %s' %
-                         (invalid_imts, required_gsims))
+            restrict_imts = gsim.DEFINED_FOR_INTENSITY_MEASURE_TYPES
+            if restrict_imts:
+                names = set(cls.__name__ for cls in restrict_imts)
+                invalid_imts = ', '.join(imts - names)
+                if invalid_imts:
+                    raise ValueError(
+                        'The IMT %s is not accepted by the GSIM %s' %
+                        (invalid_imts, gsim))
 
 
 class RlzsAssoc(collections.Mapping):
