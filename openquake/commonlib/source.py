@@ -279,7 +279,7 @@ def check_gsims_imts(rlzs_assoc, imts):
     :param rlzs_assoc: a :class:`RlzsAssoc` object
     :param imts: a sequence of intensity measure types
     """
-    imts = set(imt[2:] if imt.startswith('SA') else imt for imt in imts)
+    imts = set('SA' if imt.startswith('SA') else imt for imt in imts)
     for gsims in rlzs_assoc.get_gsims_by_trt_id().values():
         for gsim in gsims:
             restrict_imts = gsim.DEFINED_FOR_INTENSITY_MEASURE_TYPES
