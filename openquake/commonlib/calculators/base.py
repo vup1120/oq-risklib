@@ -26,7 +26,7 @@ import numpy
 from openquake.hazardlib.geo import geodetic
 from openquake.hazardlib.geo.mesh import Mesh
 from openquake.baselib import general
-from openquake.commonlib import readinput, datastore, logictree, export, source
+from openquake.commonlib import readinput, datastore, logictree, export
 from openquake.commonlib.parallel import apply_reduce, DummyMonitor
 from openquake.risklib import riskinput
 
@@ -305,7 +305,6 @@ class HazardCalculator(BaseCalculator):
                 if self.prefilter:
                     self.rlzs_assoc = (self.composite_source_model.
                                        get_rlzs_assoc())
-                    source.check_gsims_imts(self.rlzs_assoc, oq.imtls)
 
 
 class RiskCalculator(HazardCalculator):

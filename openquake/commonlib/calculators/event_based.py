@@ -352,6 +352,8 @@ def compute_gmfs_and_curves(ses_ruptures, sitecol, rlzs_assoc, monitor):
     col_id = ses_ruptures[0].col_id
     trt_id = rlzs_assoc.csm_info.get_trt_id(col_id)
     gsims = rlzs_assoc.get_gsims_by_col()[col_id]
+    oq.check_gsims_imts(gsims)
+
     trunc_level = getattr(oq, 'truncation_level', None)
     correl_model = readinput.get_correl_model(oq)
     num_sites = len(sitecol)
