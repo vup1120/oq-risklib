@@ -26,7 +26,7 @@ import numpy
 from openquake.hazardlib.geo import geodetic
 from openquake.hazardlib.geo.mesh import Mesh
 from openquake.baselib import general
-from openquake.commonlib import readinput, datastore, logictree, export
+from openquake.commonlib import readinput, datastore, logictree, export, source
 from openquake.commonlib.parallel import apply_reduce, DummyMonitor
 from openquake.risklib import riskinput
 
@@ -292,18 +292,20 @@ class HazardCalculator(BaseCalculator):
         to filter to sources according to the site collection.
         """
         if 'source' in self.oqparam.inputs:
+            oq = self.oqparam
             logging.info('Reading the composite source models')
             with self.monitor(
                     'reading composite source model', autoflush=True):
                 self.composite_source_model = (
                     readinput.get_composite_source_model(
-                        self.oqparam, self.sitecol, self.prefilter))
+                        oq, self.sitecol, self.prefilter))
                 self.job_info = readinput.get_job_info(
-                    self.oqparam, self.composite_source_model, self.sitecol)
+                    oq, self.composite_source_model, self.sitecol)
                 # we could manage limits here
                 if self.prefilter:
                     self.rlzs_assoc = (self.composite_source_model.
                                        get_rlzs_assoc())
+                    source.check_gsims_imts(self.rlzs_assoc, oq.imtls)
 
 
 class RiskCalculator(HazardCalculator):

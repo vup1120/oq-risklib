@@ -274,6 +274,25 @@ def get_col_id(tag):
     return int(tag.split('|', 1)[0].split('=')[1])
 
 
+def check_gsims_imts(rlzs_assoc, imts):
+    """
+    :param rlzs_assoc:
+    :param imts:
+    """
+    valid_imts = set()
+    required_gsims = set()
+    for gsims in rlzs_assoc.get_gsims_by_trt_id().values():
+        for gsim in gsims:
+            required_gsims.add(str(gsim))
+            ok_imts = gsim.DEFINED_FOR_INTENSITY_MEASURE_TYPES
+            if ok_imts:
+                valid_imts.update(map(str, ok_imts))
+    invalid_imts = set(imts) - valid_imts
+    if invalid_imts:
+        raise ValueError('The IMTs %s are not accepted by the GSIMs %s' %
+                         (invalid_imts, required_gsims))
+
+
 class RlzsAssoc(collections.Mapping):
     """
     Realization association class. It should not be instantiated directly,
