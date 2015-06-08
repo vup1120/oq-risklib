@@ -15,6 +15,7 @@ class DataStoreTestCase(unittest.TestCase):
         self.dstore.clear()
 
     def test_pik(self):
+        qqq = 1 / 0
         # store pickleable Python objects
         self.dstore['key1'] = 'value1'
         self.assertEqual(len(self.dstore), 1)
