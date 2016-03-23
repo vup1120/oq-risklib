@@ -24,7 +24,7 @@ import numpy
 from openquake.commonlib import valid, parallel, logictree
 from openquake.commonlib.riskmodels import get_risk_files
 
-GROUND_MOTION_CORRELATION_MODELS = ['JB2009']
+GROUND_MOTION_CORRELATION_MODELS = ['JB2009', 'GH2008PGV']
 
 HAZARD_CALCULATORS = [
     'classical', 'disaggregation', 'event_based', 'scenario',
@@ -337,12 +337,12 @@ class OqParam(valid.ParamSet):
         `intensity_measure_types_and_levels` is set directly,
         `intensity_measure_types` must not be set.
         """
-        if self.ground_motion_correlation_model:
-            for imt in self.imtls:
-                if not (imt.startswith('SA') or imt == 'PGV'):
-                    raise ValueError(
-                        'Correlation model %s does not accept IMT=%s' % (
-                            self.ground_motion_correlation_model, imt))
+        #if self.ground_motion_correlation_model:
+        #    for imt in self.imtls:
+        #        if not (imt.startswith('SA') or imt == 'PGA'):
+        #            raise ValueError(
+        #                'Correlation model %s does not accept IMT=%s' % (
+        #                    self.ground_motion_correlation_model, imt))
         if self.risk_files:  # IMTLs extracted from the risk files
             return (self.intensity_measure_types is None and
                     self.intensity_measure_types_and_levels is None)
