@@ -292,9 +292,10 @@ class RuptureConverter(object):
             convert_rupture = getattr(self, 'convert_' + striptag(node.tag))
             mag = ~node.magnitude
             rake = ~node.rake
+            slip = ~node.slip
             h = node.hypocenter
             hypocenter = geo.Point(h['lon'], h['lat'], h['depth'])
-        return convert_rupture(node, mag, rake, hypocenter)
+        return convert_rupture(node, mag, rake, hypocenter, slip)
 
     def geo_line(self, edge):
         """
@@ -373,7 +374,7 @@ class RuptureConverter(object):
             surface = geo.MultiSurface(planar_surfaces)
         return surface
 
-    def convert_simpleFaultRupture(self, node, mag, rake, hypocenter):
+    def convert_simpleFaultRupture(self, node, mag, rake, hypocenter, slip):
         """
         Convert a simpleFaultRupture node.
 
@@ -387,6 +388,7 @@ class RuptureConverter(object):
         rupt = source.rupture.Rupture(
             mag=mag, rake=rake, tectonic_region_type=None,
             hypocenter=hypocenter,
+            rupture_slip_direction=slip,
             surface=self.convert_surfaces(surfaces),
             source_typology=source.SimpleFaultSource,
             surface_nodes=surfaces)

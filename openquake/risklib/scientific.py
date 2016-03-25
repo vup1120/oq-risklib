@@ -1037,7 +1037,7 @@ class CurveBuilder(object):
                [5, 3, 2, 1],
                [6, 0, 0, 0]], dtype=uint32)
         """
-        counts = numpy.zeros((N, self.curve_resolution), numpy.uint32)
+        counts = numpy.zeros((N, self.curve_resolution), numpy.int64)
         for count_dict in count_dicts:
             counts[list(count_dict)] += count_dict.values()
         return counts
