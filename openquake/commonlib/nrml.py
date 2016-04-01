@@ -484,7 +484,6 @@ class ValidNode(LiteralNode):
         strike=valid.strike_range,
         dip=valid.dip_range,
         rake=valid.rake_range,
-        slip=valid.rake_range,
         magnitude=valid.positivefloat,
         lon=valid.longitude,
         lat=valid.latitude,

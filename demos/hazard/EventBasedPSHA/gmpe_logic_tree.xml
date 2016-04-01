@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="UTF-8"?>
 
 <nrml xmlns:gml="http://www.opengis.net/gml"
       xmlns="http://openquake.org/xmlns/nrml/0.4">
@@ -9,7 +8,7 @@
                     applyToTectonicRegionType="Active Shallow Crust">
 
                 <logicTreeBranch branchID="b1">
- <uncertaintyModel>BooreAtkinson2008</uncertaintyModel>
+ <uncertaintyModel>ChiouYoungs2014</uncertaintyModel>
                     <uncertaintyWeight>1.0</uncertaintyWeight>
                 </logicTreeBranch>
 

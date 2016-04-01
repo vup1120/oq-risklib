@@ -4,6 +4,7 @@
     <simpleFaultRupture>
         <magnitude>7.0</magnitude>
         <rake>90.0</rake>
+        <slip>90.0</slip>
         <hypocenter lat="0.0" lon="0.0" depth="10.0"/>
         <simpleFaultGeometry>
             <gml:LineString>
