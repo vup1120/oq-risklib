@@ -684,6 +684,14 @@ class SourceConverter(RuptureConverter):
             a :class:`openquake.hazardlib.source.CharacteristicFaultSource`
             instance
         """
+        try:
+            hypo_list = valid.hypo_list(node.hypoList)
+        except NameError:
+            hypo_list = ()
+        try:
+            slip_list = valid.slip_list(node.slipList)
+        except NameError:
+            slip_list = ()
         char = source.CharacteristicFaultSource(
             source_id=node['id'],
             name=node['name'],
@@ -692,7 +700,9 @@ class SourceConverter(RuptureConverter):
             surface=self.convert_surfaces(node.surface),
             rake=~node.rake,
             temporal_occurrence_model=self.tom,
-            surface_node=node.surface)
+            surface_node=node.surface,
+            hypo_list=hypo_list,
+            slip_list=slip_list)
         return char
 
     def convert_nonParametricSeismicSource(self, node):
