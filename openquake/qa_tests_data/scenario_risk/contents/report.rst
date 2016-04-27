@@ -1,26 +1,28 @@
 QA Scenario Risk for contents
 =============================
 
-num_sites = 3, sitecol = 776 B
+gem-tstation:/home/michele/ssd/calc_117.hdf5 updated Wed Apr 27 10:57:13 2016
+
+num_sites = 3, sitecol = 831 B
 
 Parameters
 ----------
-============================ =============
-calculation_mode             scenario_risk
-number_of_logic_tree_samples 0            
-maximum_distance             300          
-investigation_time           None         
-ses_per_logic_tree_path      1            
-truncation_level             3.000        
-rupture_mesh_spacing         10           
-complex_fault_mesh_spacing   10           
-width_of_mfd_bin             None         
-area_source_discretization   None         
-random_seed                  3            
-master_seed                  0            
-concurrent_tasks             16           
-avg_losses                   False        
-============================ =============
+============================ ===================
+calculation_mode             'scenario_risk'    
+number_of_logic_tree_samples 0                  
+maximum_distance             {'default': 300}   
+investigation_time           None               
+ses_per_logic_tree_path      1                  
+truncation_level             3.0                
+rupture_mesh_spacing         10.0               
+complex_fault_mesh_spacing   10.0               
+width_of_mfd_bin             None               
+area_source_discretization   None               
+random_seed                  3                  
+master_seed                  0                  
+avg_losses                   False              
+oqlite_version               '0.13.0-gitcbbc4a8'
+============================ ===================
 
 Input files
 -----------
@@ -56,3 +58,20 @@ RC       1
 RM       1      
 W        1      
 ======== =======
+
+Slowest operations
+------------------
+======================= ========= ========= ======
+operation               time_sec  memory_mb counts
+======================= ========= ========= ======
+total scenario_risk     0.007     0.004     3     
+filtering sites         0.007     0.0       1     
+computing risk          0.006     0.0       3     
+reading exposure        0.004     0.0       1     
+computing gmfs          0.001     0.0       1     
+saving gmfs             0.001     0.0       1     
+building riskinputs     2.952E-04 0.0       1     
+building epsilons       1.111E-04 0.0       1     
+building hazard         8.488E-05 0.0       3     
+reading site collection 7.153E-06 0.0       1     
+======================= ========= ========= ======

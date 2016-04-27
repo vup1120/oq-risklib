@@ -1,27 +1,29 @@
 Classical PSHA - Loss fractions QA test
 =======================================
 
-num_sites = 13, sitecol = 1.21 KB
+gem-tstation:/home/michele/ssd/calc_38.hdf5 updated Wed Apr 27 10:54:17 2016
+
+num_sites = 13, sitecol = 1.26 KB
 
 Parameters
 ----------
-============================ ==============
-calculation_mode             classical_risk
-number_of_logic_tree_samples 1             
-maximum_distance             200           
-investigation_time           50            
-ses_per_logic_tree_path      1             
-truncation_level             3.000         
-rupture_mesh_spacing         5.000         
-complex_fault_mesh_spacing   5.000         
-width_of_mfd_bin             0.200         
-area_source_discretization   10            
-random_seed                  23            
-master_seed                  0             
-concurrent_tasks             16            
-avg_losses                   False         
-sites_per_tile               1000          
-============================ ==============
+============================ ===================
+calculation_mode             'classical_risk'   
+number_of_logic_tree_samples 1                  
+maximum_distance             {'default': 200.0} 
+investigation_time           50.0               
+ses_per_logic_tree_path      1                  
+truncation_level             3.0                
+rupture_mesh_spacing         5.0                
+complex_fault_mesh_spacing   5.0                
+width_of_mfd_bin             0.2                
+area_source_discretization   10.0               
+random_seed                  23                 
+master_seed                  0                  
+avg_losses                   False              
+sites_per_tile               1000               
+oqlite_version               '0.13.0-gitcbbc4a8'
+============================ ===================
 
 Input files
 -----------
@@ -68,14 +70,19 @@ source_model     trt_id trt                  num_sources eff_ruptures weight
 source_model.xml 0      Active Shallow Crust 2           1,613        53    
 ================ ====== ==================== =========== ============ ======
 
-Expected data transfer for the sources
---------------------------------------
-=========================== ========
-Number of tasks to generate 2       
-Sent data                   16.14 KB
-Total received data         13.04 KB
-Maximum received per task   6.93 KB 
-=========================== ========
+Informational data
+------------------
+==================================== ==============
+classical_risk_max_received_per_task 7530          
+classical_risk_num_tasks             13            
+classical_risk_sent.monitor          55588         
+classical_risk_sent.riskinputs       14193         
+classical_risk_sent.riskmodel        166556        
+classical_risk_sent.rlzs_assoc       34138         
+classical_risk_tot_received          97890         
+hostname                             'gem-tstation'
+require_epsilons                     True          
+==================================== ==============
 
 Exposure model
 --------------
@@ -98,6 +105,30 @@ Slowest sources
 ============ ========= ============ ====== ========= =========== ========== =========
 trt_model_id source_id source_class weight split_num filter_time split_time calc_time
 ============ ========= ============ ====== ========= =========== ========== =========
-0            232       AreaSource   40     1         0.001       0.0        3.108    
-0            225       AreaSource   13     1         0.001       0.0        0.530    
+0            232       AreaSource   40     1         7.188E-04   0.0        2.229    
+0            225       AreaSource   13     1         7.930E-04   0.0        0.260    
 ============ ========= ============ ====== ========= =========== ========== =========
+
+Slowest operations
+------------------
+============================== ========= ========= ======
+operation                      time_sec  memory_mb counts
+============================== ========= ========= ======
+total classical_risk           7.647     1.215     13    
+computing risk                 7.626     0.0       13    
+total classical                2.496     2.988     2     
+making contexts                1.422     0.0       2,132 
+reading composite source model 1.188     0.0       1     
+computing poes                 0.472     0.0       1,613 
+managing sources               0.047     0.0       1     
+filtering sources              0.012     0.0       15    
+store source_info              0.011     0.0       1     
+reading exposure               0.011     0.0       1     
+save curves_by_trt_gsim        0.002     0.0       1     
+building hazard                0.002     0.0       13    
+save curves_by_rlz             0.001     0.0       1     
+building riskinputs            9.871E-04 0.0       1     
+aggregate curves               9.851E-04 0.0       2     
+combine curves_by_rlz          1.981E-04 0.0       1     
+reading site collection        1.788E-05 0.0       1     
+============================== ========= ========= ======

@@ -1,25 +1,27 @@
 Event Based Hazard QA Test, Case 17
 ===================================
 
-num_sites = 1, sitecol = 684 B
+gem-tstation:/home/michele/ssd/calc_103.hdf5 updated Wed Apr 27 10:56:31 2016
+
+num_sites = 1, sitecol = 739 B
 
 Parameters
 ----------
-============================ ===========
-calculation_mode             event_based
-number_of_logic_tree_samples 5          
-maximum_distance             200        
-investigation_time           1000       
-ses_per_logic_tree_path      3          
-truncation_level             2.000      
-rupture_mesh_spacing         1.000      
-complex_fault_mesh_spacing   1.000      
-width_of_mfd_bin             1.000      
-area_source_discretization   10         
-random_seed                  106        
-master_seed                  0          
-concurrent_tasks             16         
-============================ ===========
+============================ ===================
+calculation_mode             'event_based'      
+number_of_logic_tree_samples 5                  
+maximum_distance             {'default': 200.0} 
+investigation_time           1.0                
+ses_per_logic_tree_path      3                  
+truncation_level             2.0                
+rupture_mesh_spacing         1.0                
+complex_fault_mesh_spacing   1.0                
+width_of_mfd_bin             1.0                
+area_source_discretization   10.0               
+random_seed                  106                
+master_seed                  0                  
+oqlite_version               '0.13.0-gitcbbc4a8'
+============================ ===================
 
 Input files
 -----------
@@ -38,7 +40,7 @@ Composite source model
 ========= ====== ========================================== =============== ================
 smlt_path weight source_model_file                          gsim_logic_tree num_realizations
 ========= ====== ========================================== =============== ================
-b1        0.200  `source_model_1.xml <source_model_1.xml>`_ trivial(1)      1/1             
+b1        0.200  `source_model_1.xml <source_model_1.xml>`_ trivial(0)      1/1             
 b2        0.200  `source_model_2.xml <source_model_2.xml>`_ trivial(1)      4/4             
 ========= ====== ========================================== =============== ================
 
@@ -47,7 +49,6 @@ Required parameters per tectonic region type
 ====== ============== ========= ========== ==========
 trt_id gsims          distances siteparams ruptparams
 ====== ============== ========= ========== ==========
-0      SadighEtAl1997 rrup      vs30       rake mag  
 1      SadighEtAl1997 rrup      vs30       rake mag  
 ====== ============== ========= ========== ==========
 
@@ -56,47 +57,55 @@ Realizations per (TRT, GSIM)
 
 ::
 
-  <RlzsAssoc(size=2, rlzs=5)
-  0,SadighEtAl1997: ['<0,b1,b1,w=0.2>']
+  <RlzsAssoc(size=1, rlzs=5)
   1,SadighEtAl1997: ['<1,b2,b1,w=0.2>', '<2,b2,b1,w=0.2>', '<3,b2,b1,w=0.2>', '<4,b2,b1,w=0.2>']>
 
-Non-empty rupture collections
------------------------------
-=== ========= ==================== ============
-col smlt_path TRT                  num_ruptures
-=== ========= ==================== ============
-0   b1        active shallow crust 2           
-1   b2        active shallow crust 2,838       
-2   b2        active shallow crust 2,672       
-3   b2        active shallow crust 2,770       
-4   b2        active shallow crust 2,665       
-=== ========= ==================== ============
+Number of ruptures per tectonic region type
+-------------------------------------------
+================== ====== ==================== =========== ============ ======
+source_model       trt_id trt                  num_sources eff_ruptures weight
+================== ====== ==================== =========== ============ ======
+source_model_2.xml 1      Active Shallow Crust 1           3            0.175 
+================== ====== ==================== =========== ============ ======
 
-Collections <-> realizations
-----------------------------
-=========== ============
-Collections Realizations
-0           0           
-1           1           
-2           2           
-3           3           
-4           4           
-=========== ============
+Informational data
+------------------
+======== ==============
+hostname 'gem-tstation'
+======== ==============
 
-Expected data transfer for the sources
---------------------------------------
-=========================== =========
-Number of tasks to generate 2        
-Sent data                   16.37 KB 
-Total received data         894.29 KB
-Maximum received per task   890.23 KB
-=========================== =========
+Specific information for event based
+------------------------------------
+Total number of ruptures: 3
+Total number of events: 8
 
 Slowest sources
 ---------------
 ============ ========= ============ ====== ========= =========== ========== =========
 trt_model_id source_id source_class weight split_num filter_time split_time calc_time
 ============ ========= ============ ====== ========= =========== ========== =========
-1            2         PointSource  0.175  1         9.608E-05   0.0        0.150    
-0            1         PointSource  0.975  1         1.519E-04   0.0        0.033    
+0            1         PointSource  0.975  1         1.471E-04   0.0        0.023    
+1            2         PointSource  0.175  1         9.513E-05   0.0        0.004    
 ============ ========= ============ ====== ========= =========== ========== =========
+
+Slowest operations
+------------------
+============================== ========= ========= ======
+operation                      time_sec  memory_mb counts
+============================== ========= ========= ======
+total compute_ruptures         0.028     0.0       2     
+total compute_gmfs_and_curves  0.014     0.0       3     
+reading composite source model 0.008     0.0       1     
+aggregating hcurves            0.008     0.0       12    
+store source_info              0.007     0.0       1     
+compute poes                   0.006     0.0       3     
+saving gmfs                    0.005     0.0       12    
+managing sources               0.004     0.0       1     
+make contexts                  0.003     0.0       3     
+bulding hazard curves          0.003     0.0       3     
+saving ruptures                0.003     0.0       1     
+aggregate curves               0.001     0.0       14    
+filtering ruptures             9.499E-04 0.0       3     
+filtering sources              2.422E-04 0.0       2     
+reading site collection        4.292E-05 0.0       1     
+============================== ========= ========= ======

@@ -46,10 +46,10 @@ class Print(object):
         self.lst = []
 
     def __call__(self, *args):
-        self.lst.append(' '.join(map(unicode, args)))
+        self.lst.append(' '.join(map(bytes, args)))
 
     def __str__(self):
-        return u'\n'.join(self.lst).encode('utf-8')
+        return u'\n'.join(self.lst).decode('utf-8')
 
     @classmethod
     def patch(cls):
@@ -67,7 +67,7 @@ See https://github.com/gem/oq-risklib/blob/master/doc/effective-realizations.rst
     def test_zip(self):
         path = os.path.join(DATADIR, 'frenchbug.zip')
         with Print.patch() as p:
-            info(path)
+            info(None, None, None, None, path)
         self.assertEqual(self.EXPECTED, str(p))
 
 

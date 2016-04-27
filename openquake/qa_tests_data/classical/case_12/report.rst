@@ -1,26 +1,28 @@
 Classical Hazard QA Test, Case 12
 =================================
 
-num_sites = 1, sitecol = 684 B
+gem-tstation:/home/michele/ssd/calc_99.hdf5 updated Wed Apr 27 10:56:23 2016
+
+num_sites = 1, sitecol = 739 B
 
 Parameters
 ----------
-============================ =========
-calculation_mode             classical
-number_of_logic_tree_samples 0        
-maximum_distance             200      
-investigation_time           1.000    
-ses_per_logic_tree_path      1        
-truncation_level             2.000    
-rupture_mesh_spacing         1.000    
-complex_fault_mesh_spacing   1.000    
-width_of_mfd_bin             1.000    
-area_source_discretization   10       
-random_seed                  1,066    
-master_seed                  0        
-concurrent_tasks             16       
-sites_per_tile               1000     
-============================ =========
+============================ ===================
+calculation_mode             'classical'        
+number_of_logic_tree_samples 0                  
+maximum_distance             {'default': 200.0} 
+investigation_time           1.0                
+ses_per_logic_tree_path      1                  
+truncation_level             2.0                
+rupture_mesh_spacing         1.0                
+complex_fault_mesh_spacing   1.0                
+width_of_mfd_bin             1.0                
+area_source_discretization   10.0               
+random_seed                  1066               
+master_seed                  0                  
+sites_per_tile               1000               
+oqlite_version               '0.13.0-gitcbbc4a8'
+============================ ===================
 
 Input files
 -----------
@@ -38,7 +40,7 @@ Composite source model
 ========= ====== ====================================== =============== ================
 smlt_path weight source_model_file                      gsim_logic_tree num_realizations
 ========= ====== ====================================== =============== ================
-b1        1.00   `source_model.xml <source_model.xml>`_ trivial(1,1)    1/1             
+b1        1.000  `source_model.xml <source_model.xml>`_ trivial(1,1)    1/1             
 ========= ====== ====================================== =============== ================
 
 Required parameters per tectonic region type
@@ -75,18 +77,46 @@ source_model.xml 1      Stable Continental   1           1            0.025
 filtered_weight 0.050
 =============== =====
 
-Expected data transfer for the sources
---------------------------------------
-=========================== ========
-Number of tasks to generate 2       
-Sent data                   12.85 KB
-=========================== ========
+Informational data
+------------------
+======================================== ==============
+count_eff_ruptures_max_received_per_task 2667          
+count_eff_ruptures_num_tasks             2             
+count_eff_ruptures_sent.monitor          4838          
+count_eff_ruptures_sent.rlzs_assoc       6318          
+count_eff_ruptures_sent.sitecol          874           
+count_eff_ruptures_sent.siteidx          10            
+count_eff_ruptures_sent.sources          2318          
+count_eff_ruptures_tot_received          5334          
+hazard.input_weight                      0.05          
+hazard.n_imts                            1             
+hazard.n_levels                          3.0           
+hazard.n_realizations                    1             
+hazard.n_sites                           1             
+hazard.n_sources                         0             
+hazard.output_weight                     3.0           
+hostname                                 'gem-tstation'
+======================================== ==============
 
 Slowest sources
 ---------------
 ============ ========= ============ ====== ========= =========== ========== =========
 trt_model_id source_id source_class weight split_num filter_time split_time calc_time
 ============ ========= ============ ====== ========= =========== ========== =========
-0            1         PointSource  0.025  1         1.571E-04   0.0        0.0      
-1            2         PointSource  0.025  1         8.297E-05   0.0        0.0      
+0            1         PointSource  0.025  1         1.831E-04   0.0        0.0      
+1            2         PointSource  0.025  1         1.309E-04   0.0        0.0      
 ============ ========= ============ ====== ========= =========== ========== =========
+
+Slowest operations
+------------------
+============================== ========= ========= ======
+operation                      time_sec  memory_mb counts
+============================== ========= ========= ======
+reading composite source model 0.009     0.0       1     
+store source_info              0.007     0.0       1     
+managing sources               0.005     0.0       1     
+total count_eff_ruptures       8.030E-04 0.0       2     
+filtering sources              3.140E-04 0.0       2     
+aggregate curves               6.890E-05 0.0       2     
+reading site collection        6.294E-05 0.0       1     
+============================== ========= ========= ======

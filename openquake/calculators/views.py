@@ -24,13 +24,14 @@ import operator
 import decimal
 import functools
 import itertools
+import collections
 import numpy
+import h5py
 
 from openquake.baselib.general import humansize, groupby
 from openquake.baselib.performance import perf_dt
 from openquake.hazardlib.gsim.base import ContextMaker
 from openquake.commonlib import util, source
-from openquake.commonlib.oqvalidation import OqParam
 from openquake.commonlib.datastore import view
 from openquake.commonlib.writers import (
     build_header, scientificformat, write_csv)
@@ -142,7 +143,7 @@ def view_contents(token, dstore):
     """
     Returns the size of the contents of the datastore and its total size
     """
-    oq = OqParam.from_(dstore.attrs)
+    oq = dstore['oqparam']
     data = sorted((dstore.getsize(key), key) for key in dstore)
     rows = [(key, humansize(nbytes)) for nbytes, key in data]
     total = '\n%s : %s' % (
@@ -165,23 +166,6 @@ def view_csm_info(token, dstore):
                classify_gsim_lt(sm.gsim_lt), '%d/%d' % (num_rlzs, num_paths))
         rows.append(row)
     return rst_table(rows, header)
-
-
-@view.add('rupture_collections')
-def view_rupture_collections(token, dstore):
-    rlzs_assoc = dstore['rlzs_assoc']
-    num_ruptures = dstore['num_ruptures']
-    csm_info = rlzs_assoc.csm_info
-    rows = []
-    col_id = 0
-    for sm in csm_info.source_models:
-        for tm in sm.trt_models:
-            for idx in range(sm.samples):
-                nr = num_ruptures[col_id]
-                if nr:
-                    rows.append((col_id, '_'.join(sm.path), tm.trt, nr))
-                col_id += 1
-    return rst_table(rows, ['col', 'smlt_path', 'TRT', 'num_ruptures'])
 
 
 @view.add('ruptures_per_trt')
@@ -235,17 +219,18 @@ def view_short_source_info(token, dstore, maxrows=20):
 
 @view.add('params')
 def view_params(token, dstore):
-    oq = OqParam.from_(dstore.attrs)
+    oq = dstore['oqparam']
     params = ['calculation_mode', 'number_of_logic_tree_samples',
               'maximum_distance', 'investigation_time',
               'ses_per_logic_tree_path', 'truncation_level',
               'rupture_mesh_spacing', 'complex_fault_mesh_spacing',
               'width_of_mfd_bin', 'area_source_discretization',
-              'random_seed', 'master_seed', 'concurrent_tasks']
+              'random_seed', 'master_seed']
     if 'risk' in oq.calculation_mode:
         params.append('avg_losses')
     if 'classical' in oq.calculation_mode:
         params.append('sites_per_tile')
+    params.append('oqlite_version')
     return rst_table([(param, repr(getattr(oq, param, None)))
                       for param in params])
 
@@ -261,7 +246,7 @@ def build_links(items):
 
 @view.add('inputs')
 def view_inputs(token, dstore):
-    inputs = OqParam.from_(dstore.attrs).inputs.copy()
+    inputs = dstore['oqparam'].inputs.copy()
     try:
         source_models = [('source', fname) for fname in inputs['source']]
         del inputs['source']
@@ -272,24 +257,14 @@ def view_inputs(token, dstore):
         header=['Name', 'File'])
 
 
-@view.add('source_data_transfer')
-def source_data_transfer(token, dstore):
+@view.add('job_info')
+def view_job_info(token, dstore):
     """
     Determine the amount of data transferred from the controller node
     to the workers and back in a classical calculation.
     """
-    sc = dstore['source_chunks']
-    tbl = [
-        ('Number of tasks to generate', len(sc)),
-        ('Sent data', humansize(sc.attrs['sent']))]
-    # NB: when called from `oq-lite info --report` the task name is
-    # count_eff_ruptures; then tot_received and max_received are bogus
-    if sc.attrs['task_name'] != 'count_eff_ruptures':
-        tbl.extend([
-            ('Total received data', humansize(sc.attrs['tot_received'])),
-            ('Maximum received per task', humansize(sc.attrs['max_received'])),
-        ])
-    return rst_table(tbl)
+    job_info = list(h5py.File.__getitem__(dstore.hdf5, 'job_info'))
+    return rst_table(job_info)
 
 
 @view.add('avglosses_data_transfer')
@@ -298,11 +273,11 @@ def avglosses_data_transfer(token, dstore):
     Determine the amount of average losses transferred from the workers to the
     controller node in a risk calculation.
     """
-    oq = OqParam.from_(dstore.attrs)
+    oq = dstore['oqparam']
     N = len(dstore['assetcol'])
     R = len(dstore['rlzs_assoc'].realizations)
     L = len(dstore.get_attr('composite_risk_model', 'loss_types'))
-    I = ast.literal_eval(dstore.attrs.get('insured_losses', 'False')) + 1
+    I = oq.insured_losses + 1
     ct = oq.concurrent_tasks
     size_bytes = N * R * L * I * 8 * ct  # 8 byte floats
     return (
@@ -330,7 +305,8 @@ def view_totlosses(token, dstore):
     all assets are indeed equal to the aggregate losses. This is a
     sanity check for the correctness of the implementation.
     """
-    if dstore.attrs['insured_losses'] == 'True':
+    oq = dstore['oqparam']
+    if oq.insured_losses:
         stats = ('mean', 'mean_ins')
     else:
         stats = ('mean',)
@@ -343,6 +319,32 @@ def view_totlosses(token, dstore):
             for rec in avglosses:
                 zero['%s-%s' % (name, stat)] += rec[name][stat]
     return rst_table(zero, fmt='%.6E')
+
+
+# for event based risk
+@view.add('portfolio_loss')
+def view_portfolio_loss(token, dstore):
+    """
+    The loss for the full portfolio, for each realization and loss type,
+    extracted from the event loss table.
+    """
+    oq = dstore['oqparam']
+    agg_loss_table = dstore['agg_loss_table']
+    data = numpy.zeros(len(agg_loss_table), oq.loss_dt())
+    rlzids = []
+    for rlz, dset in dstore['agg_loss_table'].items():
+        rlzi = int(rlz.split('-')[1])  # rlz-000 -> 0 etc
+        rlzids.append(rlzi)
+        for loss_type, losses in dset.items():
+            loss = losses['loss'].sum(axis=0)
+            if loss.shape == (2,):
+                data[rlzi][loss_type] = loss[0]
+                data[rlzi][loss_type + '_ins'] = loss[1]
+            else:
+                data[rlzi][loss_type] = loss
+    array = util.compose_arrays(numpy.array(rlzids), data, 'rlz')
+    # this is very sensitive to rounding errors, so I a using a low precision
+    return rst_table(array, fmt='%.4E')
 
 
 def sum_table(records):
@@ -405,8 +407,8 @@ def view_exposure_info(token, dstore):
     """
     Display info about the exposure model
     """
-    assetcol = dstore['assetcol'][:]
-    taxonomies = dstore['taxonomies'][:]
+    assetcol = dstore['assetcol/array'][:]
+    taxonomies = dstore['assetcol/taxonomies'][:]
     counts = numpy.zeros(len(taxonomies), numpy.uint32)
     for ass in assetcol:
         tax_idx = ass['taxonomy']
@@ -424,7 +426,7 @@ def view_assetcol(token, dstore):
     Display the exposure in CSV format
     """
     assetcol = dstore['assetcol'].value
-    taxonomies = dstore['taxonomies'].value
+    taxonomies = dstore['assetcol/taxonomies'].value
     header = list(assetcol.dtype.names)
     columns = [None] * len(header)
     for i, field in enumerate(header):
@@ -437,22 +439,24 @@ def view_assetcol(token, dstore):
 
 def get_max_gmf_size(dstore):
     """
-    Extract info about the largest GMF
+    Upper limit for the size of the GMFs
     """
-    oq = OqParam.from_(dstore.attrs)
-    n_sites = len(dstore['sitecol'].complete)
-    rlzs_assoc = dstore['rlzs_assoc']
-    num_ruptures = dstore.get_attr('etags', 'num_ruptures')
-    col = num_ruptures.argmax()
-    n_ruptures = num_ruptures[col]
-    trt_id = rlzs_assoc.csm_info.get_trt_id(col)
-    gsims = rlzs_assoc.gsims_by_trt_id[trt_id]
+    oq = dstore['oqparam']
     n_imts = len(oq.imtls)
-    n_rlzs = max(len(rlzs_assoc[trt_id, gsim]) for gsim in gsims)
-    size = n_sites * n_rlzs * n_ruptures * n_imts * 4  # 4 bytes per float
-    return dict(n_rlzs=n_rlzs, n_imts=n_imts, n_sites=n_sites, size=size,
-                n_ruptures=n_ruptures, humansize=humansize(size), col=col,
-                trt=rlzs_assoc.csm_info.tmdict[trt_id].trt)
+    rlzs_by_trt_id = dstore['rlzs_assoc'].get_rlzs_by_trt_id()
+    n_ruptures = collections.Counter()
+    size = collections.Counter()  # by trt_id
+    for serial in dstore['sescollection']:
+        ebr = dstore['sescollection/' + serial]
+        trt_id = ebr.trt_id
+        n_ruptures[trt_id] += 1
+        # there are 4 bytes per float
+        size[trt_id] += (len(ebr.indices) * ebr.multiplicity *
+                         len(rlzs_by_trt_id[trt_id]) * n_imts) * 4
+    [(trt_id, maxsize)] = size.most_common(1)
+    return dict(n_imts=n_imts, size=maxsize, n_ruptures=n_ruptures[trt_id],
+                n_rlzs=len(rlzs_by_trt_id[trt_id]),
+                trt_id=trt_id, humansize=humansize(maxsize))
 
 
 @view.add('biggest_ebr_gmf')
@@ -460,10 +464,21 @@ def view_biggest_ebr_gmf(token, dstore):
     """
     Returns the size of the biggest GMF in an event based risk calculation
     """
-    msg = ('The largest GMF block is for collection #%(col)d of type %(trt)r,'
-           '\ncontains %(n_imts)d IMT(s), %(n_sites)d site(s), %(n_rlzs)d '
-           'realization(s), and has a size of %(humansize)s / num_tasks')
+    msg = ('The largest GMF block is for trt_model_id=%(trt_id)d, '
+           'contains %(n_imts)d IMT(s), %(n_rlzs)d '
+           'realization(s)\nand has a size of %(humansize)s / num_tasks')
     return msg % get_max_gmf_size(dstore)
+
+
+@view.add('ruptures_events')
+def view_ruptures_events(token, dstore):
+    num_ruptures = len(dstore['sescollection'])
+    num_events = len(dstore['etags'])
+    mult = round(num_events / num_ruptures, 3)
+    lst = [('Total number of ruptures', num_ruptures),
+           ('Total number of events', num_events),
+           ('Rupture multiplicity', mult)]
+    return rst_table(lst)
 
 
 @view.add('fullreport')

@@ -45,7 +45,7 @@ def columns(line):
 
 def get_datastore(calc):
     ds = datastore.DataStore(calc.datastore.calc_id)
-    hc_id = ds.attrs.get('hazard_calculation_id')
+    hc_id = ds['oqparam'].hazard_calculation_id
     if hc_id:
         ds.parent = datastore.DataStore(int(hc_id))
     return ds
@@ -78,12 +78,14 @@ class CalculatorTestCase(unittest.TestCase):
         self.calc = self.get_calc(testfile, inis[0], **kw)
         with self.calc.monitor:
             result = self.calc.run()
+        self.calc.datastore.flush()
         if len(inis) == 2:
             hc_id = self.calc.datastore.calc_id
             self.calc = self.get_calc(
                 testfile, inis[1], hazard_calculation_id=str(hc_id), **kw)
             with self.calc.monitor:
                 result.update(self.calc.run())
+            self.calc.datastore.flush()
         return result
 
     def execute(self, testfile, job_ini):
