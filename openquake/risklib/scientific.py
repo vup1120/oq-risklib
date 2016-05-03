@@ -42,7 +42,8 @@ def build_dtypes(curve_resolution, conditional_loss_poes, insured=False):
     Returns loss_curve_dt and loss_maps_dt
     """
     pairs = [('losses', (F32, curve_resolution)),
-             ('poes', (F32, curve_resolution             ('avg', F32)]
+             ('poes', (F32, curve_resolution)),
+             ('avg', F32)]
     if insured:
         pairs += [(name + '_ins', pair) for name, pair in pairs]
     loss_curve_dt = numpy.dtype(pairs)
