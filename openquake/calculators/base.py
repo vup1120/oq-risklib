@@ -33,7 +33,7 @@ from openquake.baselib.performance import Monitor
 from openquake.commonlib import (
     readinput, riskmodels, datastore, source, __version__)
 from openquake.commonlib.oqvalidation import OqParam
-from openquake.commonlib.parallel import apply_reduce, executor
+from openquake.commonlib.parallel import starmap, executor
 from openquake.risklib import riskinput
 from openquake.baselib.python3compat import with_metaclass
 
@@ -84,7 +84,6 @@ class BaseCalculator(with_metaclass(abc.ABCMeta)):
     assetcol = datastore.persistent_attribute('assetcol')
     cost_types = datastore.persistent_attribute('cost_types')
     job_info = datastore.persistent_attribute('job_info')
-    oqparam = datastore.persistent_attribute('oqparam')
     performance = datastore.persistent_attribute('performance')
     csm = datastore.persistent_attribute('composite_source_model')
     pre_calculator = None  # to be overridden
@@ -107,7 +106,7 @@ class BaseCalculator(with_metaclass(abc.ABCMeta)):
         Update the current calculation parameters and save oqlite_version
         """
         vars(self.oqparam).update(oqlite_version=__version__, **kw)
-        self.oqparam = self.oqparam  # save the updated oqparam
+        self.datastore['oqparam'] = self.oqparam  # save the updated oqparam
         self.datastore.flush()
 
     def set_log_format(self):
@@ -117,10 +116,11 @@ class BaseCalculator(with_metaclass(abc.ABCMeta)):
         for handler in logging.root.handlers:
             handler.setFormatter(logging.Formatter(fmt))
 
-    def run(self, pre_execute=True, concurrent_tasks=None, **kw):
+    def run(self, pre_execute=True, concurrent_tasks=None, close=True, **kw):
         """
         Run the calculation and return the exported outputs.
         """
+        self.close = close
         self.set_log_format()
         if (concurrent_tasks is not None and concurrent_tasks !=
                 OqParam.concurrent_tasks.default):
@@ -226,8 +226,11 @@ class BaseCalculator(with_metaclass(abc.ABCMeta)):
             self.realizations = numpy.array(
                 [(r.uid, r.weight) for r in rlzs], rlz_dt)
         self.datastore.flush()
-        # NB: the datastore must not be closed, otherwise some tests
-        # will break; it will be closed automatically anyway
+        if self.close:  # in the engine we close later
+            try:
+                self.datastore.close()
+            except RuntimeError:  # there could be a mysterious HDF5 error
+                logging.warn('', exc_info=True)
 
 
 def check_time_event(oqparam, time_events):
@@ -614,13 +617,10 @@ class RiskCalculator(HazardCalculator):
         rlz_ids = getattr(self.oqparam, 'rlz_ids', ())
         if rlz_ids:
             self.rlzs_assoc = self.rlzs_assoc.extract(rlz_ids)
-        all_args = ((self.riskinputs, self.riskmodel, self.rlzs_assoc) +
-                    self.extra_args + (self.monitor,))
-        res = apply_reduce(
-            self.core_task.__func__, all_args,
-            concurrent_tasks=self.oqparam.concurrent_tasks,
-            weight=get_weight, key=self.riskinput_key,
-            posthook=self.save_data_transfer)
+        all_args = [(riskinput, self.riskmodel, self.rlzs_assoc) +
+                    self.extra_args + (self.monitor,)
+                    for riskinput in self.riskinputs]
+        res = starmap(self.core_task.__func__, all_args).reduce()
         return res
 
 

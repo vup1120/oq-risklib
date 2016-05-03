@@ -28,6 +28,7 @@ import collections
 import numpy
 import h5py
 
+from openquake.calculators import base
 from openquake.baselib.general import humansize, groupby
 from openquake.baselib.performance import perf_dt
 from openquake.hazardlib.gsim.base import ContextMaker
@@ -36,11 +37,12 @@ from openquake.commonlib.datastore import view
 from openquake.commonlib.writers import (
     build_header, scientificformat, write_csv)
 
-# ########################## utility functions ############################## #
-
+FIVEDIGITS = '%.5E'
 FLOAT = (float, numpy.float32, numpy.float64, decimal.Decimal)
 INT = (int, numpy.uint32, numpy.int64)
 
+
+# ########################## utility functions ############################## #
 
 def form(value):
     """
@@ -379,7 +381,7 @@ def view_mean_avg_losses(token, dstore):
     assets = util.get_assets(dstore)
     losses = util.compose_arrays(assets, data)
     losses.sort()
-    return rst_table(losses, fmt='%8.6E')
+    return rst_table(losses, fmt=FIVEDIGITS)
 
 
 # this is used by the classical calculator
@@ -516,6 +518,27 @@ def view_performance(token, dstore):
     Display performance information
     """
     return rst_table(performance_view(dstore))
+
+
+@view.add('task_info')
+def view_task_info(token, dstore):
+    """
+    Display statistics information about the tasks performance
+    """
+    pdata = dstore['performance_data'].value
+    tasks = [calc.core_task.__name__ for calc in base.calculators.values()]
+    data = ['measurement min max mean stddev'.split()]
+    for task in tasks:
+        records = pdata[pdata['operation'] == 'total ' + task]
+        if len(records):
+            for stat in ('time_sec', 'memory_mb'):
+                val = records[stat]
+                if len(val) > 1:
+                    data.append([task + '.' + stat, val.min(), val.max(),
+                                 val.mean(), val.std(ddof=1)])
+    if len(data) == 1:
+        return 'Not available'
+    return rst_table(data)
 
 
 @view.add('required_params_per_trt')
